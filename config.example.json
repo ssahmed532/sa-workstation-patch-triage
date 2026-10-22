@@ -1,0 +1,10 @@
+{
+  "projects_root": "E:\\my_dev_stuff",
+  "runs_root": "E:\\other_claude_code_stuff\\patch-triage\\runs",
+  "artifact_url": "",
+  "window_hours": 24,
+  "timezone_label": "PKT",
+  "utc_offset_hours": 5,
+  "exclude_dirs": ["node_modules", ".venv", "venv", ".git", ".uvtmp", "bin", "obj", "dist", "build", "__pycache__"],
+  "risky_ports": [21, 22, 23, 53, 953, 135, 139, 445, 3389, 5985, 5986, 3306, 5432, 6379, 27017, 9200, 11211]
+}

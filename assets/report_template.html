@@ -1,0 +1,340 @@
+<title>Workstation Patch Triage</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Condensed:wght@500;600;700&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&display=swap">
+<!--
+  Report template for sa-workstation-patch-triage. How to fill it:
+  - Write the whole page body between the BODY START and BODY END markers; everything outside them (styles, script)
+    stays as it is, so the page looks and behaves the same from run to run.
+  - Placeholders are written as double braces around a NAME. The names: OS_LABEL, WINDOW_LABEL, RUN_DATE_LONG, TZ_LABEL,
+    WINDOW_HOURS, PREVIOUS_RUN_LABEL, SIDE_EFFECTS, N_TODAY, TODAY_SUB, N_WEEK, WEEK_SUB, N_BACKLOG, BACKLOG_SUB,
+    N_CURRENT, CURRENT_SUB, TODAY_HEADING, TODAY_INTRO, WEEK_HEADING, WEEK_INTRO, BACKLOG_HEADING, BACKLOG_INTRO,
+    SURFACE, SKILL_VERSION, and RUN_ID inside the script.
+  - Blocks marked "sample" show the markup for one item; replace them with real items, repeating the markup as needed.
+  - Item ranks are one sequence across the Today, This week and Backlog bands.
+  - Delete this comment from the filled page, then check that no double-brace placeholder and no "sample" marker remains.
+-->
+<style>
+/* Layout: a remediation runbook. Summary strip first, then priority bands in the order to work them, each a ranked list with a done-checkbox per item. */
+:root {
+  --bg: #f4f6f9;
+  --surface: #ffffff;
+  --fg: #152030;
+  --muted: #586579;
+  --line: #d9dfe7;
+  --accent: #1c5ba8;
+  --crit: #b3261e;
+  --high: #b9530d;
+  --mod: #8a6300;
+  --ok: #2b7a4b;
+  --na: #5f6b7c;
+  --font-display: "IBM Plex Sans Condensed", "Arial Narrow", "Helvetica Neue", Arial, sans-serif;
+  --font-body: "IBM Plex Sans", "Segoe UI", system-ui, -apple-system, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0e131a; --surface: #161d27; --fg: #e5eaf0; --muted: #9ba7b6; --line: #2a3442;
+    --accent: #84b4f2; --crit: #ff7b70; --high: #ff9d57; --mod: #e2b54a; --ok: #62c890; --na: #9ba7b6;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0e131a; --surface: #161d27; --fg: #e5eaf0; --muted: #9ba7b6; --line: #2a3442;
+  --accent: #84b4f2; --crit: #ff7b70; --high: #ff9d57; --mod: #e2b54a; --ok: #62c890; --na: #9ba7b6;
+  color-scheme: dark;
+}
+
+body { background: var(--bg); color: var(--fg); font-family: var(--font-body); font-size: 15px; line-height: 1.55; }
+.wrap {
+  max-width: 1040px; margin: 0 auto;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 32px 56px;
+  display: grid; gap: 40px;
+}
+h1, h2, h3 { font-family: var(--font-display); text-wrap: balance; margin: 0; }
+h1 { font-size: clamp(28px, 5vw, 40px); font-weight: 700; letter-spacing: -0.01em; line-height: 1.1; }
+h2 { font-size: 24px; font-weight: 600; }
+h3 { font-size: 18px; font-weight: 600; line-height: 1.3; }
+p { margin: 0; }
+a { color: var(--accent); }
+a:focus-visible, button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+code, .mono { font-family: var(--font-mono); font-size: 0.88em; }
+.eyebrow { font-family: var(--font-mono); font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+
+.head { display: grid; gap: 12px; }
+.head .lede { max-width: 68ch; color: var(--muted); }
+.meta { display: flex; flex-wrap: wrap; gap: 8px 20px; font-size: 13px; color: var(--muted); }
+.meta b { color: var(--fg); font-weight: 500; }
+
+.summary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border: 1px solid var(--line); background: var(--surface); border-radius: 6px; }
+.tile { padding: 16px 18px; display: grid; gap: 4px; border-left: 1px solid var(--line); text-decoration: none; color: inherit; }
+.tile:first-child { border-left: 0; }
+.tile .n { font-family: var(--font-display); font-size: 34px; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; }
+.tile .lbl { font-weight: 600; }
+.tile .sub { font-size: 13px; color: var(--muted); }
+.tile.t0 .n { color: var(--crit); }
+.tile.t1 .n { color: var(--high); }
+.tile.t2 .n { color: var(--mod); }
+.tile.t3 .n { color: var(--ok); }
+.tile:hover .lbl { text-decoration: underline; }
+.prog { font-family: var(--font-mono); font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+
+.notice { display: grid; gap: 6px; padding: 14px 18px; border: 1px solid color-mix(in srgb, var(--ok) 40%, var(--line)); background: color-mix(in srgb, var(--ok) 7%, var(--surface)); border-radius: 6px; }
+.notice strong { color: var(--ok); }
+
+.band { display: grid; gap: 14px; }
+.band-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 16px; padding-bottom: 10px; border-bottom: 2px solid var(--band, var(--line)); }
+.band-head .when { font-family: var(--font-mono); font-size: 13px; color: var(--band); font-weight: 500; text-transform: uppercase; letter-spacing: 0.06em; }
+.band-head p { flex-basis: 100%; color: var(--muted); max-width: 72ch; }
+.band.b0 { --band: var(--crit); }
+.band.b1 { --band: var(--high); }
+.band.b2 { --band: var(--mod); }
+.band.b3 { --band: var(--ok); }
+.band.b4 { --band: var(--na); }
+
+.list { list-style: none; margin: 0; padding: 0; display: grid; }
+.item { display: grid; grid-template-columns: 44px 28px minmax(0, 1fr); gap: 0 12px; padding: 16px 0; border-bottom: 1px solid var(--line); }
+.item:last-child { border-bottom: 0; }
+.rank { font-family: var(--font-display); font-size: 26px; font-weight: 700; color: var(--band); line-height: 1.1; font-variant-numeric: tabular-nums; }
+.chk { padding-top: 3px; }
+.chk input { width: 18px; height: 18px; accent-color: var(--ok); cursor: pointer; }
+.body { display: grid; gap: 8px; min-width: 0; }
+.item.done .body > *:not(.title) { opacity: 0.55; }
+.item.done h3 { text-decoration: line-through; text-decoration-color: var(--muted); }
+.title { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
+.chip { font-family: var(--font-mono); font-size: 11.5px; font-weight: 500; padding: 2px 8px; border-radius: 999px; white-space: nowrap; border: 1px solid currentColor; }
+.chip.crit { color: var(--crit); background: color-mix(in srgb, var(--crit) 10%, transparent); }
+.chip.high { color: var(--high); background: color-mix(in srgb, var(--high) 10%, transparent); }
+.chip.mod { color: var(--mod); background: color-mix(in srgb, var(--mod) 10%, transparent); }
+.chip.na { color: var(--na); }
+.chip.date { color: var(--muted); border-color: var(--line); }
+.chip.new { color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); }
+.chip.still { color: var(--muted); border-style: dashed; }
+.ver { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 14px; }
+.ver code { padding: 1px 6px; border-radius: 4px; background: color-mix(in srgb, var(--fg) 6%, transparent); }
+.ver .to { color: var(--muted); }
+.ver code.new { background: color-mix(in srgb, var(--ok) 14%, transparent); color: var(--fg); }
+.ver .where { color: var(--muted); font-size: 13px; }
+.why { max-width: 76ch; }
+.do { display: grid; gap: 6px; }
+.do-label { font-family: var(--font-mono); font-size: 11.5px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+.cmd { display: flex; align-items: stretch; max-width: 100%; border: 1px solid var(--line); border-radius: 5px; background: var(--bg); overflow: hidden; }
+.cmd pre { margin: 0; padding: 8px 12px; overflow-x: auto; flex: 1; min-width: 0; font-family: var(--font-mono); font-size: 13px; }
+.cmd button { border: 0; border-left: 1px solid var(--line); background: var(--surface); color: var(--accent); font: 500 12px var(--font-mono); padding: 0 12px; cursor: pointer; }
+.cmd button:hover { background: color-mix(in srgb, var(--accent) 10%, var(--surface)); }
+.steps { margin: 0; padding-left: 20px; display: grid; gap: 4px; max-width: 76ch; }
+
+.tbl-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); }
+table { border-collapse: collapse; width: 100%; font-size: 14px; }
+th, td { text-align: left; padding: 8px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+tr:last-child td { border-bottom: 0; }
+th { font-family: var(--font-mono); font-size: 11.5px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); font-weight: 500; background: color-mix(in srgb, var(--fg) 3%, var(--surface)); }
+td { font-variant-numeric: tabular-nums; }
+td code { white-space: nowrap; }
+
+.ok-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; }
+.ok-item { padding: 10px 14px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); display: grid; gap: 2px; }
+.ok-item b { font-weight: 600; }
+.ok-item span { font-size: 13px; color: var(--muted); }
+.ok-item code { color: var(--ok); }
+
+.plain { margin: 0; padding-left: 20px; display: grid; gap: 6px; max-width: 80ch; }
+.sources { margin: 0; padding-left: 20px; columns: 2 320px; column-gap: 32px; font-size: 13.5px; }
+.sources li { break-inside: avoid; margin-bottom: 4px; }
+footer { border-top: 1px solid var(--line); padding-top: 16px; font-size: 13px; color: var(--muted); display: grid; gap: 4px; }
+
+@media (max-width: 720px) {
+  .summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .tile:nth-child(3) { border-left: 0; }
+  .tile:nth-child(n+3) { border-top: 1px solid var(--line); }
+  .item { grid-template-columns: 32px 26px minmax(0, 1fr); gap: 0 8px; }
+  .rank { font-size: 22px; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .item h3, .item .body > * { transition: opacity .15s ease; }
+}
+</style>
+
+<!-- BODY START -->
+<div class="wrap">
+
+  <header class="head">
+    <span class="eyebrow">Security patch triage · {{OS_LABEL}} dev workstation</span>
+    <h1>Workstation Patch Triage</h1>
+    <p class="lede">What to update on this machine after the advisories of {{WINDOW_LABEL}}, in the order to do it. Work the red band first. Tick each item as you finish it; ticks are saved in this browser only and reset with each new run.</p>
+    <div class="meta">
+      <span>Scanned <b>{{RUN_DATE_LONG}}</b> (times in {{TZ_LABEL}})</span>
+      <span>Window <b>last {{WINDOW_HOURS}} hours</b></span>
+      <span>Compared with <b>{{PREVIOUS_RUN_LABEL}}</b></span>
+      <span>Side effects of the scan <b>{{SIDE_EFFECTS}}</b></span>
+    </div>
+  </header>
+
+  <nav class="summary" aria-label="Summary by priority">
+    <a class="tile t0" href="#today"><span class="n">{{N_TODAY}}</span><span class="lbl">Today</span><span class="sub">{{TODAY_SUB}}</span><span class="prog" data-prog="b0"></span></a>
+    <a class="tile t1" href="#week"><span class="n">{{N_WEEK}}</span><span class="lbl">This week</span><span class="sub">{{WEEK_SUB}}</span><span class="prog" data-prog="b1"></span></a>
+    <a class="tile t2" href="#backlog"><span class="n">{{N_BACKLOG}}</span><span class="lbl">Backlog</span><span class="sub">{{BACKLOG_SUB}}</span><span class="prog" data-prog="b2"></span></a>
+    <a class="tile t3" href="#current"><span class="n">{{N_CURRENT}}</span><span class="lbl">Already patched</span><span class="sub">{{CURRENT_SUB}}</span></a>
+  </nav>
+
+  <!-- Notice box: headline notes such as advisories of the window that do not apply, big items fixed since the last run, or "nothing changed since the last run". Omit the box if there is nothing to say. -->
+  <div class="notice">
+    <!-- sample --><p><strong>PHP2Shell does not affect you.</strong> The PHP RCE pair (CVE-2026-109618 and CVE-2026-109619) needs PHP, and PHP is not installed on Windows or in WSL.</p>
+  </div>
+
+  <section class="band b0" id="today" data-band="b0">
+    <div class="band-head">
+      <span class="when">Priority 1 · Today</span>
+      <h2>{{TODAY_HEADING}}</h2>
+      <p>{{TODAY_INTRO}}</p>
+    </div>
+    <ol class="list">
+      <!-- sample item. Checkbox ids must be unique and stable between runs: chk-<short-slug>. -->
+      <li class="item" id="chrome">
+        <span class="rank">1</span>
+        <span class="chk"><input type="checkbox" id="chk-chrome" aria-label="Mark Google Chrome as done"></span>
+        <div class="body">
+          <div class="title"><h3>Google Chrome</h3><span class="chip crit">Critical ×6</span><span class="chip date">Fix released 20 Oct</span><span class="chip new">New</span></div>
+          <p class="ver"><code>155.0.8059.85</code><span class="to">→</span><code class="new">156.0.8078.47/.48</code></p>
+          <p class="why">Chrome 156 has 353 security fixes, 6 rated Critical (CVE-2026-113341, -113279, -113072, -113280, -113271, -113303).</p>
+          <div class="do"><span class="do-label">Do</span><p>Open <code>chrome://settings/help</code>, let it download, then click <b>Relaunch</b>.</p></div>
+        </div>
+      </li>
+      <!-- sample item with a copyable command -->
+      <li class="item" id="cpython">
+        <span class="rank">2</span>
+        <span class="chk"><input type="checkbox" id="chk-cpython" aria-label="Mark CPython as done"></span>
+        <div class="body">
+          <div class="title"><h3>CPython (managed by uv)</h3><span class="chip crit">Critical</span><span class="chip date">Fix released 21 Oct</span><span class="chip still">Still open</span></div>
+          <p class="ver"><code>3.14.7</code><span class="to">→</span><code class="new">3.14.9</code></p>
+          <p class="why">One or two plain sentences on why this matters on this machine.</p>
+          <div class="do"><span class="do-label">Do</span>
+            <div class="cmd"><pre>uv python upgrade 3.14</pre><button type="button" data-copy="uv python upgrade 3.14">Copy</button></div>
+          </div>
+        </div>
+      </li>
+    </ol>
+  </section>
+
+  <section class="band b1" id="week" data-band="b1">
+    <div class="band-head">
+      <span class="when">Priority 2 · This week</span>
+      <h2>{{WEEK_HEADING}}</h2>
+      <p>{{WEEK_INTRO}}</p>
+    </div>
+    <ol class="list">
+      <!-- items, same markup as above, ranks continue -->
+    </ol>
+  </section>
+
+  <section class="band b2" id="backlog" data-band="b2">
+    <div class="band-head">
+      <span class="when">Priority 3 · Backlog</span>
+      <h2>{{BACKLOG_HEADING}}</h2>
+      <p>{{BACKLOG_INTRO}}</p>
+    </div>
+    <ol class="list">
+      <!-- sample grouped item with a table -->
+      <li class="item" id="bk-py">
+        <span class="rank">9</span>
+        <span class="chk"><input type="checkbox" id="chk-bk-py" aria-label="Mark Python backlog as done"></span>
+        <div class="body">
+          <div class="title"><h3>Python packages</h3><span class="chip high">High and Moderate</span></div>
+          <div class="tbl-wrap">
+            <table>
+              <thead><tr><th>Package</th><th>Installed</th><th>Fix</th><th>Projects</th><th>Note</th></tr></thead>
+              <tbody>
+                <tr><td>urllib3</td><td><code>2.6.3</code></td><td><code>2.8.0</code></td><td>azure-devops-tools</td><td></td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="do"><span class="do-label">Do · per project</span>
+            <div class="cmd"><pre>uv lock --upgrade; uv sync</pre><button type="button" data-copy="uv lock --upgrade; uv sync">Copy</button></div>
+          </div>
+        </div>
+      </li>
+    </ol>
+  </section>
+
+  <!-- Resolved since the previous run: dependency findings that disappeared and installed-software upgrades from the digest. Omit the section on a first run or when nothing was resolved. -->
+  <section class="band b3" id="resolved">
+    <div class="band-head"><span class="when">Since {{PREVIOUS_RUN_LABEL}}</span><h2>Resolved</h2></div>
+    <ul class="plain">
+      <!-- sample --><li><b>Go toolchain</b> <code>go1.27.1</code> → <code>go1.27.3</code></li>
+    </ul>
+  </section>
+
+  <section class="band b3" id="current">
+    <div class="band-head"><span class="when">No action</span><h2>Already on the fixed version</h2></div>
+    <div class="ok-grid">
+      <!-- sample --><div class="ok-item"><b>Node.js</b><span><code>24.22.1</code> · 21 Oct security release</span></div>
+    </div>
+  </section>
+
+  <section class="band b4" id="gaps">
+    <div class="band-head"><span class="when">Limits</span><h2>Not covered or not verified</h2></div>
+    <ul class="plain">
+      <!-- not_scanned entries, unverifiable sources, scan side effects, out-of-scope notes -->
+    </ul>
+  </section>
+
+  <section class="band b4" id="sources">
+    <div class="band-head"><span class="when">Sources</span><h2>Vendor advisories and release notes</h2></div>
+    <ul class="sources">
+      <!-- <li><a href="URL" target="_blank" rel="noopener">Name</a></li> -->
+    </ul>
+  </section>
+
+  <footer>
+    <span>Scan data: uv audit (OSV), pip-audit, npm audit, dotnet list package --vulnerable, govulncheck, OSV for global installs, winget, and GitHub Advisory Database publish dates.</span>
+    <span>Produced with {{SURFACE}} using sa-workstation-patch-triage v{{SKILL_VERSION}} · {{RUN_DATE_LONG}}</span>
+  </footer>
+</div>
+<!-- BODY END -->
+
+<script>
+(function () {
+  var KEY = 'patch-triage-{{RUN_ID}}';
+  var state = {};
+  try { state = JSON.parse(localStorage.getItem(KEY) || '{}') || {}; } catch (e) { state = {}; }
+  function save() { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) {} }
+  function refresh() {
+    document.querySelectorAll('[data-band]').forEach(function (band) {
+      var boxes = band.querySelectorAll('.item input[type=checkbox]');
+      var done = 0;
+      boxes.forEach(function (b) { if (b.checked) done++; });
+      var out = document.querySelector('[data-prog="' + band.dataset.band + '"]');
+      if (out) out.textContent = boxes.length ? done + ' of ' + boxes.length + ' done' : '';
+    });
+  }
+  document.querySelectorAll('.item input[type=checkbox]').forEach(function (box) {
+    var item = box.closest('.item');
+    if (state[box.id]) { box.checked = true; item.classList.add('done'); }
+    box.addEventListener('change', function () {
+      item.classList.toggle('done', box.checked);
+      if (box.checked) state[box.id] = true; else delete state[box.id];
+      save();
+      refresh();
+    });
+  });
+  refresh();
+  document.querySelectorAll('button[data-copy]').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var text = btn.getAttribute('data-copy');
+      function done(msg) { btn.textContent = msg; setTimeout(function () { btn.textContent = 'Copy'; }, 1500); }
+      function fallback() {
+        var pre = btn.parentElement.querySelector('pre');
+        var r = document.createRange(); r.selectNodeContents(pre);
+        var s = window.getSelection(); s.removeAllRanges(); s.addRange(r);
+        done('Selected');
+      }
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(function () { done('Copied'); }, fallback);
+      } else { fallback(); }
+    });
+  });
+})();
+</script>

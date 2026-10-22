@@ -1,0 +1,9 @@
+# Machine-specific paths and the private artifact link
+config.local.json
+
+# Python bytecode from uv run
+__pycache__/
+*.pyc
+
+# Run output, in case runs_root is pointed inside the repo
+runs/
