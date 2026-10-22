@@ -1,25 +1,28 @@
 ---
 name: sa-workstation-patch-triage
 description: >
-  Read-only security patch triage of this Windows dev workstation. It inventories installed apps,
+  Read-only security patch triage of a Windows developer workstation. It inventories installed apps,
   browsers, language runtimes, global npm/bun/uv tools, .NET, Go, WSL distros and listening ports;
-  audits every dependency lockfile under the projects folder (uv, pip, npm, NuGet, Go); checks vendor
+  audits every dependency lockfile under a projects folder (uv, pip, npm, NuGet, Go); checks vendor
   advisories released in the last N hours (default 24); and publishes a ranked remediation page:
-  Today / This week / Backlog, with a delta against the previous run. Use this skill whenever the user
-  asks what needs patching or updating on their machine, whether a newly reported CVE, zero-day or
-  "critical vulnerability in X" affects them, to scan installed packages, runtimes or dev dependencies
-  for vulnerabilities, to re-run or refresh the workstation scan or patch triage, or for a security
-  update checklist for their laptop, even if they don't say "triage". Not for a single Windows KB
-  GO/NOGO decision (sa-windows-update-advisor) or for Azure VMs.
+  Today / This week / Backlog, with a delta against the previous run. Use this skill when the user
+  asks what needs patching or updating on their machine, asks to scan installed packages, runtimes or
+  dev dependencies for vulnerabilities, asks to run, re-run or refresh the workstation scan or patch
+  triage, or wants a security update checklist for their laptop, even if they don't say "triage".
+  Not for deciding on a single Windows KB update, and not for Azure VMs or servers.
 argument-hint: "[window-hours, e.g. 48] [dry-run]"
+compatibility: >
+  Claude Code on Windows 11 with PowerShell 7 (pwsh) and uv. Optional: GitHub CLI (gh, signed in),
+  npm, .NET SDK and Go, for the projects that use them. Needs network access. Publishing the page needs
+  the Artifact tool; without it the run stays dry.
 metadata:
-  version: "1.0"
+  version: "1.2"
   updated: "2026-10-22"
 ---
 
 # Workstation patch triage
 
-Version 1.0 — Last updated 2026-10-22
+Version 1.2 — Last updated 2026-10-22
 
 ## What this produces
 
@@ -46,6 +49,9 @@ artifact link. If only `config.example.json` exists, the run still works but sta
 
 ## Ground rules
 
+- **Ask before a full run that nobody asked for.** A run takes 10–35 minutes, depending on the model, and has side effects (see Things that go
+  wrong). If the user invoked this skill or asked for a scan, run it. If you loaded it for a narrower question, such
+  as whether one CVE affects them, say what a run does and how long it takes, and start only when they agree.
 - **Read-only.** Never install, update, uninstall or `npm audit fix` anything, and never run `uv lock` or edit files
   in a project. Projects without a lockfile are resolved in a copy inside the run folder. The user decides what to
   change; this skill tells them what and in which order.
@@ -57,10 +63,10 @@ artifact link. If only `config.example.json` exists, the run still works but sta
 - **Vendor first.** Release dates, versions and severities come from the vendor's page, the GitHub Advisory Database
   or OSV. If a news site disagrees with the vendor, go with the vendor and record the conflict under Limits. Never fill
   in a version, date or severity no source gave: write "not stated".
-- **Times** are in the configured zone (`timezone_label`, default PKT = UTC+5). State the zone once. Convert with the
-  scripts or PowerShell, not Git Bash `date`, which has no time zone database here.
-- **Shell.** Use the PowerShell tool for the commands below. Git Bash on this machine has MSYS problems with
-  long-running native processes.
+- **Times** are in the machine's time zone, labelled with `timezone_label` from `run.json`. State the zone once.
+  Convert with the scripts or PowerShell, not Git Bash `date`, which may not have a time zone database.
+- **Shell.** Use the PowerShell tool for the commands below. Git Bash (MSYS) can have problems with long-running
+  native processes.
 
 ## Workflow
 
@@ -68,7 +74,8 @@ artifact link. If only `config.example.json` exists, the run still works but sta
 
 1. **Set up the run.** `uv run "SKILL/scripts/setup_run.py" [--window-hours N] [--dry-run]`. The last line printed is
    RUN. `RUN/run.json` holds the window start (`since_utc`), the previous run to compare with, and whether this run is
-   dry.
+   dry. The script stops if PowerShell 7 is missing, and prints a note for each optional tool (gh, npm, dotnet, go)
+   that is missing and what that skips. Pass both on to the user, and list the skipped scans under Limits.
 
 2. **Inventory** (about 3 minutes). `pwsh -NoProfile -File "SKILL/scripts/collect_inventory.ps1" -RunDir RUN`.
    It writes `RUN/inventory.json` and raw text under `RUN/raw/`: winget lists, runtime versions, global packages, uv
@@ -118,9 +125,10 @@ artifact link. If only `config.example.json` exists, the run still works but sta
    - `SURFACE` is the Claude surface and model actually used.
    - `SIDE_EFFECTS` lists what this run touched (see Things that go wrong), or "none".
    - Leave out the Resolved section on a first run, or when nothing was resolved.
-   Finish by deleting the template comment, then check that no double-brace placeholder or "sample" marker remains.
+   Finish by deleting the template comment, then run `uv run "SKILL/scripts/check_page.py" --run RUN`. If it lists
+   problems, fix each one in the page and run it again. Go on to step 8 only when it prints "page OK".
 
-8. **Publish**, unless the run is dry. This conversation has not seen the page before, so first read it with the
+8. **Publish**, unless the run is dry or the Artifact tool is not available (then treat the run as dry). This conversation has not seen the page before, so first read it with the
    Artifact tool (`action: "read"`, `url` = `artifact_url`). Then publish `RUN/patch-triage.html` with the same `url`,
    and without `icon`, so the link and icon stay the same. If the read fails because the page was deleted, publish
    without `url` and tell the user the new link so they can update `artifact_url`.
@@ -157,9 +165,11 @@ artifact link. If only `config.example.json` exists, the run still works but sta
 - `scripts/collect_inventory.ps1`: Windows inventory (PowerShell 7).
 - `scripts/scan_dependencies.py`: runs the dependency scanners.
 - `scripts/build_findings.py`: normalises, enriches and compares the findings, and prints the digest.
+- `scripts/check_page.py`: checks the filled page before it is published.
 - `scripts/skill_version.py`: reads the version from this file.
 - `references/triage-rules.md`: bands, ranking, grouping and the wording of each item.
 - `references/vendor-sources.md`: the vendor pages to read on every run.
 - `references/research-brief.md`: the prompt for the research agent, with slots to fill from the inventory.
 - `assets/report_template.html`: the page layout.
 - `config.example.json`: copy it to `config.local.json` and edit.
+- `evals/`: test cases for changes to this skill; not used during a run.

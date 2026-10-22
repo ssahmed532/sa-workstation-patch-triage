@@ -7,3 +7,6 @@ __pycache__/
 
 # Run output, in case runs_root is pointed inside the repo
 runs/
+
+# Eval results from claude plugin eval (they include machine inventory)
+evals/results/

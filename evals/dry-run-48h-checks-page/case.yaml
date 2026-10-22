@@ -1,0 +1,7 @@
+schema_version: "1.1"
+name: dry-run-48h-checks-page
+expected_outcome: |
+  A full run with a 48-hour window that writes the page to the run folder and does not publish it.
+  run.json has window_hours 48 and dry_run true. check_page.py prints "page OK" before the run ends.
+  Nothing is installed, updated or changed in any project. The chat reply gives the counts per band,
+  the top actions, anything not scanned, and the local path of the page.

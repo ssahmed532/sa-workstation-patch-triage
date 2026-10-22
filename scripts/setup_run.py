@@ -6,10 +6,12 @@
 
 Usage: uv run setup_run.py [--window-hours N] [--dry-run]
 Prints the run folder path on the last line so the caller can pick it up.
+Stops before creating anything if PowerShell 7 is missing, and notes the optional tools that are missing.
 """
 import argparse
 import json
 import os
+import shutil
 import sys
 from datetime import datetime, timedelta, timezone
 
@@ -38,19 +40,41 @@ def previous_run(runs_root, current):
     return os.path.join(runs_root, runs[-1]) if runs else None
 
 
+# tool -> what a run loses without it (scan_dependencies.py records the affected projects as NOT SCANNED)
+OPTIONAL_TOOLS = {
+    "gh": "severity and publish dates come from OSV only (sign in with `gh auth login` for the GitHub Advisory Database)",
+    "npm": "npm projects and global npm packages are not audited",
+    "dotnet": ".NET projects are not audited",
+    "go": "Go projects are not audited",
+}
+
+
+def check_tools():
+    if not shutil.which("pwsh"):
+        sys.exit("PowerShell 7 (pwsh) is not on PATH, and the inventory step needs it. "
+                 "Install it with `winget install --id Microsoft.PowerShell`, then run again.")
+    for tool, loss in OPTIONAL_TOOLS.items():
+        if not shutil.which(tool):
+            print(f"note: {tool} is not on PATH: {loss}.", file=sys.stderr)
+
+
+def expand(path):
+    return os.path.normpath(os.path.expandvars(os.path.expanduser(path)))
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--window-hours", type=int)
     ap.add_argument("--dry-run", action="store_true", help="write the report locally, do not publish")
     a = ap.parse_args()
 
+    check_tools()
     cfg = load_config()
-    offset = timedelta(hours=cfg.get("utc_offset_hours", 5))
     now_utc = datetime.now(timezone.utc)
-    now_local = now_utc + offset
+    now_local = now_utc.astimezone()  # the machine's time zone, so daylight saving time is handled
     window = a.window_hours or cfg.get("window_hours", 24)
 
-    runs_root = os.path.expandvars(os.path.expanduser(cfg["runs_root"]))
+    runs_root = expand(cfg["runs_root"])
     name = now_local.strftime("%Y-%m-%d")
     run_dir = os.path.join(runs_root, name)
     if os.path.exists(run_dir):  # second run on the same day keeps the first one intact
@@ -64,12 +88,11 @@ def main():
         "config_file": cfg["_config_file"],
         "started_utc": now_utc.isoformat(timespec="seconds"),
         "started_local": now_local.strftime("%Y-%m-%d %H:%M"),
-        "timezone_label": cfg.get("timezone_label", "PKT"),
-        "utc_offset_hours": cfg.get("utc_offset_hours", 5),
+        "timezone_label": cfg.get("timezone_label") or now_local.tzname(),
         "window_hours": window,
         "since_utc": (now_utc - timedelta(hours=window)).isoformat(timespec="seconds"),
         "recent_cutoff_utc": (now_utc - timedelta(hours=max(window, 72))).isoformat(timespec="seconds"),
-        "projects_root": cfg["projects_root"],
+        "projects_root": expand(cfg["projects_root"]),
         "exclude_dirs": cfg.get("exclude_dirs", []),
         "risky_ports": cfg.get("risky_ports", []),
         "artifact_url": artifact_url,

@@ -12,7 +12,7 @@ Decide an item's band by working down this list. Stop at the first rule that mat
 2. It is a browser, OS component, runtime or toolchain, or anything else that handles untrusted network input or files on this machine, and it is Critical, or it is High and published in the window.
 3. A browser has no patch yet for a Chromium or Firefox security release. Report it with the mitigation.
 4. It is unpatchable (no fixed version will ship, for example an obsolete branch) and has a High or Critical advisory. The action is to remove it.
-5. It is a project or global-tool dependency that runs as a service or processes untrusted input, and it is Critical, or it is High and published in the window.
+5. It is a project or global-tool dependency that runs as a service or processes untrusted input, and it is Critical, or it is High and published in the window. To decide, look at what the project reads and from where. If you still cannot tell, it does not meet this rule: put it in This week, and say in the item what would move it to Today (for example "move to Today if this project opens images from users").
 
 **Priority 2 · This week**
 1. It is Critical or High but does not meet a Today rule. For example, a test-only or dev-only package, or a transitive dependency of tests.

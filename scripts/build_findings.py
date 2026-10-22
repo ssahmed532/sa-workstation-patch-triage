@@ -18,7 +18,7 @@ import subprocess
 import urllib.request
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime, timedelta
+from datetime import datetime, timezone
 
 from skill_version import SKILL_VERSION
 
@@ -315,13 +315,15 @@ def main():
         json.dump(out, f, indent=1)
 
     # ---- digest (times in the configured zone)
-    tz = cfg.get("timezone_label", "PKT")
-    offset = timedelta(hours=cfg.get("utc_offset_hours", 5))
+    tz = cfg.get("timezone_label") or "local time"
 
     def local(ts):
         if not ts:
             return "not stated"
-        return (datetime.fromisoformat(ts.replace("Z", "+00:00")) + offset).strftime("%d %b %H:%M")
+        dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+        if dt.tzinfo is None:  # advisory dates without a zone are UTC
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone().strftime("%d %b %H:%M")
 
     fl = out["findings"]
     sev = defaultdict(int)
