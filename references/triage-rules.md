@@ -65,6 +65,8 @@ The digest lists one row per project, package and version. Merge rows so the pag
   - Use a command only if it ran during this scan or you checked it with `--help`. This covers `uv lock --upgrade-package <pkg>`, `uv sync`, `uv python upgrade`, `npm install <pkg>@<version>`, `npm audit fix`, `winget uninstall --id <id>`, and `sudo apt update && sudo apt full-upgrade` inside WSL.
   - For .NET package bumps, give the package and version to set in the project file.
   - For apps, give the UI path or the vendor download page.
+  - Link only to pages in `vendor-sources.md`, the GitHub Advisory Database or OSV. A download link found on any
+    other page or in a search result is not used.
 - Delta chip when a previous run exists: **New**, **Still open** or (in its own list) **Resolved**.
 
 ## Wording

@@ -15,12 +15,14 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 import urllib.request
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 
-from skill_version import SKILL_VERSION
+sys.dont_write_bytecode = True  # the skill folder may be read-only or replaced by an update; write nothing into it
+from skill_version import SKILL_VERSION  # noqa: E402
 
 RANK = {"critical": 4, "high": 3, "moderate": 2, "low": 1, "unknown": 0}
 
@@ -65,10 +67,14 @@ class Advisories:
         self.gh = shutil.which("gh")
 
     def _gh(self, ghsa):
-        p = subprocess.run([self.gh, "api", f"/advisories/{ghsa}"], capture_output=True, text=True, encoding="utf-8", timeout=60)
-        if p.returncode != 0:
+        """One advisory from the GitHub Advisory Database, or None so the caller falls back to OSV."""
+        try:
+            p = subprocess.run([self.gh, "api", f"/advisories/{ghsa}"], capture_output=True, text=True, encoding="utf-8", timeout=60)
+            if p.returncode != 0:
+                return None
+            a = json.loads(p.stdout)
+        except (subprocess.TimeoutExpired, OSError, ValueError):  # a timeout, a missing gh, or a non-JSON reply
             return None
-        a = json.loads(p.stdout)
         cvss = (a.get("cvss_severities") or {})
         score = ((cvss.get("cvss_v4") or {}).get("score") or (cvss.get("cvss_v3") or {}).get("score") or None)
         return {"severity": norm_sev(a.get("severity")), "cvss": score, "published": a.get("published_at"),

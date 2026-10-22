@@ -1,6 +1,6 @@
 # sa-workstation-patch-triage
 
-> **Version:** 1.2 — Last updated 2026-10-22
+> **Version:** 1.3 — Last updated 2026-10-22
 
 A Claude Code skill that runs a read-only security patch triage of a Windows 11 developer workstation and publishes a
 ranked remediation page: what to update today, this week, and in the backlog, with a comparison against the previous run.
@@ -28,19 +28,26 @@ The workflow and its rules are in [SKILL.md](SKILL.md). The triage rules are in 
 
 ## Install
 
+Clone the repo wherever you keep tools, then run the installer from that folder:
+
 ```powershell
-git clone https://github.com/ssahmed532/sa-workstation-patch-triage D:\3rd_party_skills\sa-workstation-patch-triage
-cd D:\3rd_party_skills\sa-workstation-patch-triage
-./install.ps1
+git clone https://github.com/ssahmed532/sa-workstation-patch-triage
+cd sa-workstation-patch-triage
+pwsh -ExecutionPolicy Bypass -File .\install.ps1
 ```
 
 `install.ps1` links `~/.claude/skills/sa-workstation-patch-triage` to this folder with a directory junction, so the
-repo is the only copy and edits are live. It also creates `config.local.json` from `config.example.json`. Restart
-Claude Code afterwards.
+repo is the only copy and edits are live. It also creates `%APPDATA%\sa-workstation-patch-triage\config.json` from
+`config.example.json`. Restart Claude Code afterwards.
+
+`-ExecutionPolicy Bypass` applies to that one command only. Without it, Windows PowerShell 5.1 blocks every script on
+a client machine by default, and PowerShell 7 blocks scripts that carry the internet mark, which a ZIP download of this
+repo has and a `git clone` does not. For a ZIP, running `Unblock-File` on the `.ps1` files is the alternative.
 
 ## Configure
 
-Edit `config.local.json`. Git ignores it.
+Edit `%APPDATA%\sa-workstation-patch-triage\config.json`. A `config.local.json` in the repo folder is used only when
+that file does not exist; git ignores it.
 
 | Key | Meaning |
 |---|---|
@@ -69,10 +76,10 @@ scans, so a cloud-scheduled routine cannot run it. To repeat it on a schedule, u
 
 ## What a run changes
 
-Nothing in your projects or installs. Side effects:
-- `dotnet list` restores into each project's `obj/`
-- each WSL distro is started to read its package list
-- the uv, npm and Go caches download the scanner packages
+Nothing in your projects or installs. The side effects (each WSL distro is started, and the uv, npm and Go caches
+download the scanner packages) are listed under "Side effects to report" in
+[SKILL.md](SKILL.md#things-that-go-wrong). The dependency scanners that run as downloaded code, pip-audit and
+govulncheck, are pinned to fixed versions in `scripts/scan_dependencies.py`.
 
 ## Layout
 
@@ -89,6 +96,7 @@ assets/report_template.html  page layout
 config.example.json          configuration template
 install.ps1                  junction install
 evals/                       test cases, one folder each
+LICENSE                      MIT
 ```
 
 ## Test
@@ -114,3 +122,9 @@ Run the dry-run case in a Claude Code session with each model, against a copy of
 and the session transcript.
 
 To release a new version, change `version` and `updated` in the SKILL.md front matter and the header of this file.
+Bump the pinned scanner versions in `scripts/scan_dependencies.py` in the same release, after reading their release
+notes.
+
+## License
+
+MIT. See [LICENSE](LICENSE).

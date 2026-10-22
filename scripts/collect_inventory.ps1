@@ -70,12 +70,16 @@ $inv.installed_apps = @(Get-ItemProperty $uninstall -ErrorAction SilentlyContinu
         Sort-Object DisplayName, DisplayVersion -Unique |
         ForEach-Object { [ordered]@{ name = $_.DisplayName; version = $_.DisplayVersion; publisher = $_.Publisher } })
 
-# --- browsers: read the file version, since Chrome and Edge are not winget-managed here
+# --- browsers: read the file version, since Chrome and Edge are not winget-managed here.
+# Machine-wide paths first, then the per-user paths that an install without admin rights uses.
 $inv.browsers = foreach ($p in @(
         "$env:ProgramFiles\Google\Chrome\Application\chrome.exe",
+        "$env:LOCALAPPDATA\Google\Chrome\Application\chrome.exe",
         "${env:ProgramFiles(x86)}\Microsoft\Edge\Application\msedge.exe",
         "$env:ProgramFiles\Mozilla Firefox\firefox.exe",
-        "$env:ProgramFiles\BraveSoftware\Brave-Browser\Application\brave.exe")) {
+        "$env:LOCALAPPDATA\Mozilla Firefox\firefox.exe",
+        "$env:ProgramFiles\BraveSoftware\Brave-Browser\Application\brave.exe",
+        "$env:LOCALAPPDATA\BraveSoftware\Brave-Browser\Application\brave.exe")) {
     if (Test-Path $p) { @{ path = $p; version = (Get-Item $p).VersionInfo.ProductVersion } }
 }
 

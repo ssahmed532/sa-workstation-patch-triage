@@ -34,6 +34,15 @@ def main():
     for marker in ("<!-- BODY START -->", "<!-- BODY END -->"):
         if marker not in text:
             problems.append(f"marker {marker} is missing; the body must stay between the two markers")
+    # advisory titles and vendor text are copied into the body unescaped; the only script on the page is the template's
+    body = re.search(r"<!-- BODY START -->(.*)<!-- BODY END -->", text, re.S)
+    if body:
+        first = text[:body.start()].count("\n") + 1
+        for n, line in enumerate(body.group(1).splitlines(), first):
+            if re.search(r"<script\b", line, re.I):
+                problems.append(f"line {n}: a <script> tag inside the body; scripts belong only in the template, outside the markers")
+            if re.search(r"javascript:", line, re.I):
+                problems.append(f"line {n}: a javascript: URL inside the body")
     key = "patch-triage-" + os.path.basename(os.path.normpath(run_dir))
     if key not in text:
         problems.append(f"the checkbox key should be '{key}' (RUN_ID is the run folder name)")

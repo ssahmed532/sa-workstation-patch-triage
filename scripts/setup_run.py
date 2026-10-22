@@ -15,18 +15,39 @@ import shutil
 import sys
 from datetime import datetime, timedelta, timezone
 
-from skill_version import SKILL_VERSION
+sys.dont_write_bytecode = True  # the skill folder may be read-only or replaced by an update; write nothing into it
+from skill_version import SKILL_VERSION  # noqa: E402
 
 SKILL_DIR = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+USER_CONFIG = os.path.join(os.environ.get("APPDATA") or os.path.expanduser("~"), "sa-workstation-patch-triage", "config.json")
+REQUIRED = {"projects_root": str, "runs_root": str}
+OPTIONAL = {"artifact_url": str, "window_hours": int, "timezone_label": str, "exclude_dirs": list, "risky_ports": list}
+
+
+def config_path():
+    """The user's config first, then the one next to SKILL.md, then the example (which keeps the run dry)."""
+    for p in (USER_CONFIG, os.path.join(SKILL_DIR, "config.local.json")):
+        if os.path.exists(p):
+            return p
+    return os.path.join(SKILL_DIR, "config.example.json")
 
 
 def load_config():
-    local = os.path.join(SKILL_DIR, "config.local.json")
-    example = os.path.join(SKILL_DIR, "config.example.json")
-    path = local if os.path.exists(local) else example
-    with open(path, encoding="utf-8") as f:
-        cfg = json.load(f)
-    cfg["_config_file"] = os.path.basename(path)
+    path = config_path()
+    try:
+        with open(path, encoding="utf-8-sig") as f:
+            cfg = json.load(f)
+    except ValueError as e:
+        sys.exit(f"{path} is not valid JSON: {e}")
+    for key, typ in REQUIRED.items():
+        if not isinstance(cfg.get(key), typ) or not cfg.get(key):
+            sys.exit(f"{path}: '{key}' is missing or not a {typ.__name__}. See config.example.json.")
+    for key, typ in OPTIONAL.items():
+        if key in cfg and not isinstance(cfg[key], typ):
+            sys.exit(f"{path}: '{key}' should be a {typ.__name__}.")
+    for key in sorted(set(cfg) - set(REQUIRED) - set(OPTIONAL)):
+        print(f"note: {path}: '{key}' is not a setting this version reads; it is ignored.", file=sys.stderr)
+    cfg["_config_file"] = path
     return cfg
 
 
@@ -70,6 +91,10 @@ def main():
 
     check_tools()
     cfg = load_config()
+    print(f"config: {cfg['_config_file']}", file=sys.stderr)
+    if os.path.basename(cfg["_config_file"]) == "config.example.json":
+        print(f"note: no config at {USER_CONFIG}, so the example is used and this run is dry. "
+              "Copy config.example.json there and set artifact_url.", file=sys.stderr)
     now_utc = datetime.now(timezone.utc)
     now_local = now_utc.astimezone()  # the machine's time zone, so daylight saving time is handled
     window = a.window_hours or cfg.get("window_hours", 24)

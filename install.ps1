@@ -5,11 +5,12 @@
 
 .DESCRIPTION
     Creates a directory junction (no admin rights needed), so edits in the repo are live in Claude Code
-    and the repo stays the only copy. Also creates config.local.json from config.example.json if it
-    does not exist yet. Safe to re-run.
+    and the repo stays the only copy. Also creates the user config at
+    %APPDATA%\sa-workstation-patch-triage\config.json from config.example.json if it does not exist yet.
+    Safe to re-run.
 
 .EXAMPLE
-    ./install.ps1
+    pwsh -ExecutionPolicy Bypass -File .\install.ps1
 #>
 [CmdletBinding()]
 param()
@@ -31,9 +32,10 @@ if (Test-Path $link) {
     Write-Host "Installed: $link -> $repo" -ForegroundColor Green
 }
 
-$local = Join-Path $repo 'config.local.json'
-if (-not (Test-Path $local)) {
-    Copy-Item (Join-Path $repo 'config.example.json') $local
-    Write-Host "Created config.local.json. Set artifact_url (and check the paths) before the first published run." -ForegroundColor Yellow
+$cfg = Join-Path $env:APPDATA 'sa-workstation-patch-triage\config.json'
+if (-not (Test-Path $cfg)) {
+    New-Item -ItemType Directory -Force (Split-Path $cfg -Parent) | Out-Null
+    Copy-Item (Join-Path $repo 'config.example.json') $cfg
+    Write-Host "Created $cfg. Set artifact_url (and check the paths) before the first published run." -ForegroundColor Yellow
 }
 Write-Host "Restart Claude Code so it picks up the skill, then run /sa-workstation-patch-triage."

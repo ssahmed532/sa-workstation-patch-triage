@@ -1,6 +1,6 @@
 # /// script
 # requires-python = ">=3.12"
-# dependencies = []
+# dependencies = ["packaging>=24"]
 # ///
 """Run every dependency scanner over the manifests in RUN/inventory.json and save raw results to RUN/deps/.
 
@@ -9,8 +9,8 @@ Usage: uv run scan_dependencies.py --run RUN
 Read-only for the projects: lockfiles are audited as they are, and projects without a lockfile are
 resolved in a copy under RUN/work/, never in the repo. Each scan's outcome is recorded in
 RUN/deps/scan_status.json so the report can say what was not scanned and why.
-Side effects outside RUN: `dotnet list` restores into each project's obj/, and the uv, npm and Go
-caches download what they need.
+Side effects outside RUN: the uv, npm and Go caches download what they need. `dotnet list` runs with
+--no-restore, so the projects themselves are not touched.
 """
 import argparse
 import json
@@ -18,12 +18,21 @@ import os
 import re
 import shutil
 import subprocess
+import sys
+import tomllib
 import urllib.request
 from collections import defaultdict
 
-from skill_version import SKILL_VERSION
+from packaging.specifiers import InvalidSpecifier, SpecifierSet
+
+sys.dont_write_bytecode = True  # the skill folder may be read-only or replaced by an update; write nothing into it
+from skill_version import SKILL_VERSION  # noqa: E402
 
 OSV = "https://api.osv.dev/v1"
+# Scanner code that is downloaded and executed on every run. Pinned on purpose: bump these with a release, after
+# reading the scanner's release notes, rather than running whatever is newest on the day.
+PIP_AUDIT = "2.10.1"
+GOVULNCHECK = "v1.9.0"
 status = []
 
 
@@ -73,25 +82,61 @@ def scan_uv(d, root, deps):
     record("uv-audit", d, ok, save(deps, f"uv__{slug(d, root)}.json", out) if ok else None, "" if ok else err or out)
 
 
-def scan_unlocked_python(src, root, deps, work):
+def installed_pythons(inv):
+    """Minor versions of the uv-managed CPythons in the inventory, newest first, as '3.14' strings."""
+    found = {m.group(1) for p in inv.get("uv_pythons") or [] for m in [re.match(r"cpython-(\d+\.\d+)", p)] if m}
+    return sorted(found, key=lambda v: tuple(int(x) for x in v.split(".")), reverse=True)
+
+
+def pick_python(src, pythons):
+    """The newest installed Python that the project's requires-python allows: (version, None) or (None, why)."""
+    spec = None
+    if os.path.basename(src).lower() == "pyproject.toml":
+        try:
+            with open(src, "rb") as f:
+                spec = (tomllib.load(f).get("project") or {}).get("requires-python")
+        except (OSError, ValueError):
+            pass
+    if not pythons:
+        return None, "no uv-managed Python is installed (uv python install <version>)"
+    if not spec:
+        return pythons[0], None
+    try:
+        allowed = SpecifierSet(spec)
+    except InvalidSpecifier:
+        return pythons[0], None
+    for v in pythons:
+        if allowed.contains(v):
+            return v, None
+    return None, f"no installed uv Python satisfies requires-python {spec} (installed: {', '.join(pythons)})"
+
+
+def scan_unlocked_python(src, root, deps, work, pythons):
     """pyproject without uv.lock, or a requirements file: resolve a copy in RUN/work, then pip-audit the pins."""
     name = slug(src, root)
+    py, why = pick_python(src, pythons)
+    if not py:
+        record("pip-audit", src, False, None, why)
+        return
     wd = os.path.join(work, name)
     os.makedirs(wd, exist_ok=True)
     copy = os.path.join(wd, os.path.basename(src))
     shutil.copy2(src, copy)
     pinned = os.path.join(wd, "pinned.txt")
-    code, out, err = run(["uv", "pip", "compile", copy, "--python", "3.14", "--quiet", "--no-header", "-o", pinned], cwd=wd)
+    # --no-python-downloads: a read-only scan must never install an interpreter
+    code, out, err = run(["uv", "pip", "compile", copy, "--python", py, "--no-python-downloads", "--quiet", "--no-header",
+                          "-o", pinned], cwd=wd)
     if code != 0 or not os.path.exists(pinned):
-        record("pip-audit", src, False, None, "uv pip compile failed: " + err)
+        record("pip-audit", src, False, None, f"uv pip compile with Python {py} failed: " + err)
         return
     outfile = os.path.join(deps, f"pipaudit__{name}.json")
-    code, out, err = run(["uvx", "pip-audit", "-r", pinned, "--no-deps", "--disable-pip", "--progress-spinner", "off",
-                          "-f", "json", "-o", outfile], cwd=wd)
+    code, out, err = run(["uvx", f"pip-audit@{PIP_AUDIT}", "-r", pinned, "--no-deps", "--disable-pip",
+                          "--progress-spinner", "off", "-f", "json", "-o", outfile], cwd=wd)
     ok = os.path.exists(outfile)
     # no lockfile means nothing pins what is actually installed: this shows what a fresh install would get today
     record("pip-audit", src, ok, os.path.relpath(outfile, os.path.dirname(deps)) if ok else None,
-           "resolved fresh from the manifest (no lockfile): reflects a new install today, not an existing venv" if ok else err)
+           f"resolved fresh from the manifest with Python {py} (no lockfile): reflects a new install today, "
+           "not an existing venv" if ok else err)
 
 
 def scan_npm(d, root, deps):
@@ -137,7 +182,8 @@ def parse_govulncheck(text):
 
 
 def scan_go(d, root, deps):
-    code, out, err = run(["go", "run", "golang.org/x/vuln/cmd/govulncheck@latest", "-show", "verbose", "./..."], cwd=d, timeout=1200)
+    code, out, err = run(["go", "run", f"golang.org/x/vuln/cmd/govulncheck@{GOVULNCHECK}", "-show", "verbose", "./..."],
+                         cwd=d, timeout=1200)
     text = out + err
     ok = "Vulnerability #" in text or "Your code is affected by" in text or "No vulnerabilities found" in text
     parsed = parse_govulncheck(text)
@@ -249,16 +295,17 @@ def main():
         return any(csproj.lower().startswith(os.path.dirname(s).lower() + os.sep) and name in t for s, t in sln_text.items())
 
     dockerfiles = []
+    pythons = installed_pythons(inv)
 
     for d, files in sorted(by_dir.items()):
         lower = {f.lower() for f in files}
         if "uv.lock" in lower:
             scan_uv(d, root, deps)
         elif "pyproject.toml" in lower:
-            scan_unlocked_python(os.path.join(d, "pyproject.toml"), root, deps, work)
+            scan_unlocked_python(os.path.join(d, "pyproject.toml"), root, deps, work, pythons)
         for f in sorted(files):
             if re.match(r"requirements.*\.txt$", f, re.I):
-                scan_unlocked_python(os.path.join(d, f), root, deps, work)
+                scan_unlocked_python(os.path.join(d, f), root, deps, work, pythons)
         if "package-lock.json" in lower:
             scan_npm(d, root, deps)
         elif lower & {"pnpm-lock.yaml", "yarn.lock", "bun.lock", "bun.lockb"}:
