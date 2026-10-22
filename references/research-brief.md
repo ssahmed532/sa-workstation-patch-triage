@@ -26,7 +26,7 @@ another official source, and list the page under what you could not verify. Repo
 list, on github.com/advisories or on osv.dev.
 
 Installed:
-- OS: <os.product> <os.display_version>, build <os.build>; latest hotfixes <ids and dates>
+- OS: <os.product> <os.edition> <os.display_version>, build <os.build>; latest hotfixes <ids and dates>
 - Browsers: <browser exe and version, one per line>
 - Runtimes and CLIs: <name and version for every runtime with a version>
 - uv-managed Pythons: <list>; uv tools: <list>

@@ -53,6 +53,13 @@ def main():
             print("  " + p)
         sys.exit(1)
     print("page OK")
+    # the page is published without a document skeleton (the Artifact wrapper adds one); this copy has it, so it opens from disk
+    local = os.path.join(run_dir, "patch-triage.local.html")
+    with open(local, "w", encoding="utf-8") as f:
+        f.write('<!doctype html>\n<html lang="en">\n<head>\n<meta charset="utf-8">\n'
+                '<meta name="viewport" content="width=device-width, initial-scale=1">\n</head>\n<body>\n'
+                + text + '\n</body>\n</html>\n')
+    print(f"local copy: {local}")
 
 
 if __name__ == "__main__":

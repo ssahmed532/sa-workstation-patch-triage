@@ -1,7 +1,5 @@
 # sa-workstation-patch-triage
 
-> **Version:** 1.3 — Last updated 2026-10-22
-
 A Claude Code skill that runs a read-only security patch triage of a Windows 11 developer workstation and publishes a
 ranked remediation page: what to update today, this week, and in the backlog, with a comparison against the previous run.
 
@@ -17,14 +15,16 @@ The workflow and its rules are in [SKILL.md](SKILL.md). The triage rules are in 
 
 ## Requirements
 
-| Tool | Used for |
-|---|---|
-| Windows 11, PowerShell 7 (`pwsh`) | the inventory script |
-| [uv](https://docs.astral.sh/uv/) | runs the Python scripts (standard library only) and the Python audits (`uv audit`, `uvx pip-audit`) |
-| Node.js / npm | `npm audit` and global package checks |
-| GitHub CLI (`gh`), signed in | advisory severity and publish dates from the GitHub Advisory Database. Without it, the scripts fall back to OSV |
-| .NET SDK, Go | only if projects use them; `dotnet list package --vulnerable`, `govulncheck` |
-| Claude Code with the Artifact tool | publishing the page |
+| Tool | Minimum | Used for |
+|---|---|---|
+| Windows 11, PowerShell 7 (`pwsh`) | PowerShell 7.4 (tested with 7.5) | the inventory script |
+| [uv](https://docs.astral.sh/uv/) | a uv that has `uv audit` (0.13 or newer; tested with 0.13.5). The setup step checks for it and stops with an upgrade message if it is missing | runs the Python scripts and the Python audits (`uv audit`, `uvx pip-audit`) |
+| Node.js / npm | any current LTS (tested with Node 24) | `npm audit` and global package checks |
+| GitHub CLI (`gh`), signed in | any | advisory severity and publish dates from the GitHub Advisory Database. Without it, the scripts fall back to OSV |
+| .NET SDK | 9.0.300 or newer, the first with `dotnet list package --vulnerable` (tested with 10.0.402). Older SDKs are noted at setup and .NET projects are not audited | only if projects use .NET |
+| Go | any supported release | only if projects use Go; `govulncheck` |
+| Claude Code | tested with 2.1.308. Needs background agents; the PowerShell tool is used when present, otherwise Bash | running the skill |
+| Claude Code signed in to claude.ai | the Artifact tool | publishing the page. Without it every run is dry and the page is the local file |
 
 ## Install
 
@@ -57,7 +57,8 @@ that file does not exist; git ignores it.
 | `window_hours` | default look-back window for "new" advisories |
 | `timezone_label` | optional label for the time zone on the page, such as `PKT`; times always use the machine's time zone, and an empty label uses the Windows zone name |
 | `exclude_dirs` | folder names skipped while searching for manifests |
-| `risky_ports` | listening ports to flag |
+| `risky_ports` | listening ports to flag for review. The triage rules then decide whether a flagged port is a finding: a loopback-only listener and the standard Windows services on 135, 139 and 445 are not |
+| `runtime_search_roots` | folders searched for PHP, Java and Ruby installs that are not on PATH (default: the system drive). Other users' profiles and the Windows folder are always skipped |
 
 ## Use
 
@@ -73,6 +74,19 @@ The skill also triggers on requests such as "what needs patching on my machine".
 "does the new OpenSSL CVE affect me", Claude asks before starting a full run.
 A full run takes 10–35 minutes, depending on the model, and most of that is the upstream research. The skill must run on the machine it
 scans, so a cloud-scheduled routine cannot run it. To repeat it on a schedule, use `/loop` in an open session.
+On a dry run, open `patch-triage.local.html` from the run folder; it is the page wrapped as a complete document.
+
+What a run costs, from the 22 October 2026 evals on one workstation with 16 scanned projects (the research agent's own
+usage is not included in the token figures):
+
+| Model | Wall time | Main session tokens |
+|---|---|---|
+| Haiku | 14 min | about 146k |
+| Sonnet | 21 min | about 132k |
+| Opus | 25 min | about 181k |
+
+A run with more projects, or on a day with many advisories, costs more. On a Pro plan one Opus run is a large share of
+a five-hour usage window.
 
 ## What a run changes
 
@@ -80,6 +94,39 @@ Nothing in your projects or installs. The side effects (each WSL distro is start
 download the scanner packages) are listed under "Side effects to report" in
 [SKILL.md](SKILL.md#things-that-go-wrong). The dependency scanners that run as downloaded code, pip-audit and
 govulncheck, are pinned to fixed versions in `scripts/scan_dependencies.py`.
+
+## What leaves your machine
+
+- **Package names and versions** of your dependencies go to OSV (`api.osv.dev`) for the global npm, bun and uv tools,
+  and to the advisory sources behind `uv audit`, `pip-audit`, `npm audit`, `dotnet list package --vulnerable` and
+  `govulncheck` for your projects. Advisory IDs go to the GitHub Advisory Database through `gh` when it is signed in.
+- **Product names and versions** of installed software go into the research agent's web fetches and web searches,
+  and the vendor pages it reads see those requests.
+- **The published page** carries your OS edition and build, installed app and runtime versions, the names of your
+  projects, and the ports that are listening. It is private by default; anyone you share it with sees all of that.
+  The run folder under `runs_root` holds the same data plus the raw scanner output, so keep it outside any synced or
+  shared folder.
+- **Nothing else.** No source code, no file contents, no credentials. The scripts never open `.env` files or credential
+  stores, and the research brief tells the agent to skip pages that show personal identifiers.
+
+## Corporate and managed machines
+
+The skill was built and tested on an unmanaged Windows 11 Pro workstation. On a machine managed by IT, expect these
+differences and set the environment variables before the run:
+
+- **A proxy that inspects TLS.** The scanners and advisory lookups need to trust the corporate root CA. uv reads the
+  Windows certificate store with `UV_SYSTEM_CERTS=1` (or `--system-certs`); Node and npm need the CA file in
+  `NODE_EXTRA_CA_CERTS` (npm also honours its `cafile` setting); the Python scripts and Go use the Windows store on
+  their own; `gh` and the Python scripts honour `HTTPS_PROXY`.
+- **A private package registry.** `npm audit` needs the registry's audit endpoint, which mirrors such as Artifactory
+  do not always expose; those projects are then reported as not scanned. Set `GOPROXY` for Go if the public proxy is
+  blocked.
+- **winget disabled by policy.** The inventory's first two commands fail and the run continues without winget data;
+  the vendor comparison still works from the registry and file versions.
+- **EDR or application control** may block `govulncheck` (downloaded and built with `go run`) or `uvx pip-audit`. The
+  affected projects are reported as not scanned.
+- **Apps that IT updates** through Company Portal or Software Center get the action "ask IT to update", as the triage
+  rules say. The triage cannot tell which apps those are; name them in the chat so the page says so.
 
 ## Layout
 
@@ -112,18 +159,21 @@ the cases in `<dir>/evals/`, and `{"name": "patch-triage-eval"}` in `<dir>/.clau
 `<dir>`:
 
 ```powershell
-claude plugin eval . --case "*question*" --model haiku --no-publish --allow-tools WebFetch WebSearch
+claude plugin eval . --case "*question*" --model haiku --judge-model sonnet --no-publish --allow-tools WebFetch WebSearch
 ```
 
 Each case runs three times, with and without the skill, and each run is billed. Results go to `evals/results/`.
+Pass `--judge-model sonnet`: the default Haiku judge voted FAIL on "no scan script ran" checks in runs where no
+script ran at all, including the no-skill arm, so its scores were unusable. The checks are objective, so when in
+doubt read the traces in the results folder.
 
 Run the dry-run case in a Claude Code session with each model, against a copy of the skill whose
 `config.local.json` has an empty `artifact_url` and its own `runs_root`. Check its graders against the run folder
 and the session transcript.
 
-To release a new version, change `version` and `updated` in the SKILL.md front matter and the header of this file.
-Bump the pinned scanner versions in `scripts/scan_dependencies.py` in the same release, after reading their release
-notes.
+To release a new version, change `version` and `updated` in the SKILL.md front matter, the only place the version is
+stated; the scripts and the page footer read it from there. Bump the pinned scanner versions in
+`scripts/scan_dependencies.py` in the same release, after reading their release notes.
 
 ## License
 

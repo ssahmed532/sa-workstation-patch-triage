@@ -39,6 +39,14 @@ Decide an item's band by working down this list. Stop at the first rule that mat
 
 Software that IT manages, such as a VPN client or EDR agent, gets the band its severity and exposure call for. The action is "ask IT to update to <version>".
 
+## Listening ports
+
+`inventory.listening[]` flags ports from the config's `risky_ports` list. A flag is a prompt to look, not a finding:
+- A listener bound to `127.0.0.1` or `::1` only is reachable from this machine alone. It is not listed.
+- Ports 135, 139 and 445 owned by the System process are Windows RPC and file sharing, present on every Windows client. List them once in Backlog only if the machine is used on networks the user does not control, with the action of setting those networks to Public in Windows.
+- A port owned by a developer service (a database, a cache, a web server) bound to all addresses is a Backlog item: say which process, and that the fix is binding it to localhost.
+- A port owned by a remote-access or management service (3389, 5985, 5986, 22, 23) bound to all addresses on a non-managed machine is a This-week item.
+
 Within a band, rank by exposure first and severity second:
 1. Browsers and anything that handles untrusted network input.
 2. Language runtimes and toolchains (everything built or run with them inherits the flaw).

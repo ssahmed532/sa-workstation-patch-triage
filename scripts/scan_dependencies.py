@@ -315,10 +315,11 @@ def main():
                 scan_dotnet(os.path.join(d, f), root, deps)
         if "go.mod" in lower:
             scan_go(d, root, deps)
-        if "dockerfile" in lower:
-            with open(os.path.join(d, "Dockerfile"), encoding="utf-8", errors="replace") as fh:
-                dockerfiles.append({"path": os.path.join(d, "Dockerfile"),
-                                    "from": [l.strip() for l in fh if l.strip().upper().startswith("FROM ")]})
+        for f in sorted(files):  # Dockerfile, Dockerfile.cli, api.Dockerfile, ...
+            if re.search(r"^dockerfile(\..+)?$|\.dockerfile$", f, re.I):
+                with open(os.path.join(d, f), encoding="utf-8", errors="replace") as fh:
+                    dockerfiles.append({"path": os.path.join(d, f),
+                                        "from": [l.strip() for l in fh if l.strip().upper().startswith("FROM ")]})
         if "cargo.lock" in lower or "gemfile.lock" in lower or "composer.lock" in lower:
             record("other-lockfile", d, False, None, "Cargo, Gemfile and composer lockfiles are not scanned by this skill")
 

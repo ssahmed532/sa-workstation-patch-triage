@@ -45,15 +45,21 @@ $inv.runtimes = foreach ($k in $probes.Keys) {
     $g = Get-Command $k -ErrorAction SilentlyContinue | Select-Object -First 1
     [ordered]@{ name = $k; path = $g.Source; version = $(if ($g) { First-Line $probes[$k] } else { $null }) }
 }
-# Paths only: every python on PATH should be a uv shim; anything else (for example the Store alias) is worth flagging
-$inv.python_on_path = @(Get-Command python, python3 -All -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Source)
+# Every python on PATH with its version. The Microsoft Store alias stub (under WindowsApps) opens the Store instead of
+# running Python, so it is marked without being executed. A python.org or Anaconda install here is not a finding by itself.
+$inv.python_on_path = @(Get-Command python, python3 -All -ErrorAction SilentlyContinue | ForEach-Object {
+        $src = $_.Source
+        if ($src -match '\\WindowsApps\\') { [ordered]@{ path = $src; version = $null; store_alias = $true } }
+        else { [ordered]@{ path = $src; version = (First-Line { & $src --version }.GetNewClosure()); store_alias = $false } }
+    })
 
 # --- global packages and tools
 $inv.npm_global_root = (npm root -g 2>$null)
 $inv.npm_global = (npm ls -g --depth=0 --json 2>$null | ConvertFrom-Json -AsHashtable)
 $inv.npm_global_outdated = (npm outdated -g --json 2>$null | ConvertFrom-Json -AsHashtable)
 Save-Raw 'bun-global.txt' (bun pm ls -g 2>&1)
-$inv.bun_global_root = Join-Path $env:USERPROFILE '.bun\install\global\node_modules'
+$bunHome = if ($env:BUN_INSTALL) { $env:BUN_INSTALL } else { Join-Path $env:USERPROFILE '.bun' }
+$inv.bun_global_root = Join-Path $bunHome 'install\global\node_modules'
 Save-Raw 'uv-python.txt' (uv python list --only-installed 2>&1)
 Save-Raw 'uv-tools.txt'  (uv tool list --show-version-specifiers 2>&1)
 $inv.uv_tools = foreach ($l in (uv tool list 2>$null)) { if ($l -match '^(\S+) v(\S+)') { @{ name = $Matches[1]; version = $Matches[2] } } }
@@ -88,30 +94,49 @@ $cv = Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion'
 # ProductName still says "Windows 10" on many Windows 11 installs; the build number is what decides it
 $product = if ([int]$cv.CurrentBuild -ge 22000) { $cv.ProductName -replace 'Windows 10', 'Windows 11' } else { $cv.ProductName }
 $inv.os = [ordered]@{
-    product = $product; display_version = $cv.DisplayVersion; build = "$($cv.CurrentBuild).$($cv.UBR)"
+    product = $product; edition = $cv.EditionID; display_version = $cv.DisplayVersion; build = "$($cv.CurrentBuild).$($cv.UBR)"
     hotfixes = @(Get-HotFix | Sort-Object InstalledOn -Descending | Select-Object -First 8 |
-        ForEach-Object { @{ id = $_.HotFixID; description = $_.Description; installed = "$($_.InstalledOn)" } })
+        ForEach-Object { @{ id = $_.HotFixID; description = $_.Description
+                installed = $(if ($_.InstalledOn) { $_.InstalledOn.ToString('yyyy-MM-dd') } else { $null }) } })
 }
 
-# --- runtimes that may be installed off PATH (PHP, Java, Ruby): quick bounded search on fixed drives
-$drives = (Get-CimInstance Win32_LogicalDisk -Filter 'DriveType=3').DeviceID
-$inv.off_path_runtimes = @(foreach ($d in $drives) {
-        Get-ChildItem "$d\" -Recurse -Depth 5 -File -Include php.exe, java.exe, ruby.exe -ErrorAction SilentlyContinue |
-            Where-Object FullName -notmatch '\\(Windows|\$Recycle\.Bin)\\' | Select-Object -ExpandProperty FullName
+# --- runtimes that may be installed off PATH (PHP, Java, Ruby): bounded search under runtime_search_roots from the config,
+# skipping the Windows folder, the recycle bin and other users' profiles
+$roots = @($run.runtime_search_roots | Where-Object { $_ })
+if (-not $roots) { $roots = @("$env:SystemDrive\") }
+$me = [regex]::Escape($env:USERNAME)
+$inv.off_path_runtimes = @(foreach ($r in $roots) {
+        Get-ChildItem $r -Recurse -Depth 5 -File -Include php.exe, java.exe, ruby.exe -ErrorAction SilentlyContinue |
+            Where-Object { $_.FullName -notmatch '\\(Windows|\$Recycle\.Bin)\\' -and $_.FullName -notmatch "\\Users\\(?!$me\\)" } |
+            Select-Object -ExpandProperty FullName
     })
 
-# --- WSL: key packages and how stale the apt lists are. docker-desktop is Docker's own VM, skipped.
+# --- WSL: package manager per distro; key packages and apt staleness for apt-based ones. docker-desktop is Docker's own VM, skipped.
 $keyPkgs = 'openssl|libssl3t64|libssl3|ca-certificates|libnss3|python3|nodejs|php\S*|golang\S*|openssh-server|openssh-client|curl|git|sudo|bash'
-$inv.wsl = @(foreach ($d in (wsl -l -q 2>$null | Where-Object { $_ -and $_ -notmatch '^docker-desktop' })) {
-        $d = $d.Trim()
-        $dpkg = wsl -d $d -- dpkg -l 2>$null
-        Save-Raw "wsl-$d-dpkg.txt" $dpkg
-        $newest = wsl -d $d -- sh -c 'stat -c %Y /var/lib/apt/lists/*InRelease 2>/dev/null | sort -n | tail -1'
-        [ordered]@{
-            distro = $d
-            apt_lists_newest_utc = $(if ("$newest".Trim()) { [DateTimeOffset]::FromUnixTimeSeconds([long]"$newest".Trim()).UtcDateTime.ToString('s') + 'Z' } else { $null })
-            key_packages = @($dpkg | Where-Object { $_ -match "^ii\s+($keyPkgs)(:\S+)?\s" } | ForEach-Object { $c = $_ -split '\s+'; "$($c[1]) $($c[2])" })
-            dpkg_raw = "raw/wsl-$d-dpkg.txt"
+$distros = @()
+if (Get-Command wsl.exe -ErrorAction SilentlyContinue) {
+    $list = wsl -l -q 2>$null
+    if ($LASTEXITCODE -eq 0) { $distros = @($list | ForEach-Object { "$_".Trim() } | Where-Object { $_ -and $_ -notmatch '^docker-desktop' }) }
+}
+$inv.wsl = @(foreach ($d in $distros) {
+        # `which` needs no shell variables, which the outer shell would otherwise expand before the distro's sh sees them
+        $found = @(wsl -d $d -- which dpkg rpm apk pacman 2>$null | ForEach-Object { "$_".Trim() } | Where-Object { $_ })
+        $pm = if ($found) { [IO.Path]::GetFileName($found[0]) } else { '' }
+        if ($pm -eq 'dpkg') {
+            $dpkg = wsl -d $d -- dpkg -l 2>$null
+            Save-Raw "wsl-$d-dpkg.txt" $dpkg
+            $newest = wsl -d $d -- sh -c 'stat -c %Y /var/lib/apt/lists/*InRelease 2>/dev/null | sort -n | tail -1'
+            [ordered]@{
+                distro = $d; package_manager = 'apt'
+                apt_lists_newest_utc = $(if ("$newest".Trim()) { [DateTimeOffset]::FromUnixTimeSeconds([long]"$newest".Trim()).UtcDateTime.ToString('s') + 'Z' } else { $null })
+                key_packages = @($dpkg | Where-Object { $_ -match "^ii\s+($keyPkgs)(:\S+)?\s" } | ForEach-Object { $c = $_ -split '\s+'; "$($c[1]) $($c[2])" })
+                dpkg_raw = "raw/wsl-$d-dpkg.txt"
+            }
+        } else {
+            [ordered]@{
+                distro = $d; package_manager = $(if ($pm) { $pm } else { 'unknown' }); apt_lists_newest_utc = $null; key_packages = @(); dpkg_raw = $null
+                not_scanned = "only apt-based distros are inventoried; this one uses $(if ($pm) { $pm } else { 'an unknown package manager' })"
+            }
         }
     })
 
@@ -124,7 +149,7 @@ $inv.listening = @(Get-NetTCPConnection -State Listen -ErrorAction SilentlyConti
 # --- dependency manifests under the projects root
 $names = 'package.json', 'package-lock.json', 'pnpm-lock.yaml', 'yarn.lock', 'bun.lockb', 'bun.lock', 'pyproject.toml', 'uv.lock',
 'requirements*.txt', 'Pipfile.lock', 'poetry.lock', '*.csproj', '*.sln', '*.slnx', 'packages.config', 'go.mod', 'Cargo.lock',
-'Gemfile.lock', 'composer.lock', 'Dockerfile'
+'Gemfile.lock', 'composer.lock', 'Dockerfile', 'Dockerfile.*', '*.Dockerfile'
 $excl = '\\(' + (($run.exclude_dirs | ForEach-Object { [regex]::Escape($_) }) -join '|') + ')\\'
 $inv.manifests = @(Get-ChildItem $run.projects_root -Recurse -File -Force -Include $names -ErrorAction SilentlyContinue |
         Where-Object { $_.FullName -notmatch $excl } | Select-Object -ExpandProperty FullName | Sort-Object)

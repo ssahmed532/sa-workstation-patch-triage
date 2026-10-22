@@ -11,7 +11,9 @@ Stops before creating anything if PowerShell 7 is missing, and notes the optiona
 import argparse
 import json
 import os
+import re
 import shutil
+import subprocess
 import sys
 from datetime import datetime, timedelta, timezone
 
@@ -21,7 +23,9 @@ from skill_version import SKILL_VERSION  # noqa: E402
 SKILL_DIR = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 USER_CONFIG = os.path.join(os.environ.get("APPDATA") or os.path.expanduser("~"), "sa-workstation-patch-triage", "config.json")
 REQUIRED = {"projects_root": str, "runs_root": str}
-OPTIONAL = {"artifact_url": str, "window_hours": int, "timezone_label": str, "exclude_dirs": list, "risky_ports": list}
+OPTIONAL = {"artifact_url": str, "window_hours": int, "timezone_label": str, "exclude_dirs": list, "risky_ports": list,
+            "runtime_search_roots": list}
+MIN_DOTNET_SDK = (9, 0, 300)  # first SDK with `dotnet list package --vulnerable`
 
 
 def config_path():
@@ -70,13 +74,28 @@ OPTIONAL_TOOLS = {
 }
 
 
+def version_tuple(text):
+    return tuple(int(x) for x in re.findall(r"\d+", text)[:3])
+
+
 def check_tools():
     if not shutil.which("pwsh"):
         sys.exit("PowerShell 7 (pwsh) is not on PATH, and the inventory step needs it. "
                  "Install it with `winget install --id Microsoft.PowerShell`, then run again.")
+    # `uv audit` is what scans uv projects; older uv builds do not have it
+    probe = subprocess.run([shutil.which("uv") or "uv", "audit", "--help"], capture_output=True, text=True)
+    if probe.returncode != 0:
+        sys.exit("This uv has no `uv audit` command, which the dependency scan needs. "
+                 "Upgrade uv (`uv self update`), then run again.")
     for tool, loss in OPTIONAL_TOOLS.items():
         if not shutil.which(tool):
             print(f"note: {tool} is not on PATH: {loss}.", file=sys.stderr)
+    dotnet = shutil.which("dotnet")
+    if dotnet:
+        v = subprocess.run([dotnet, "--version"], capture_output=True, text=True).stdout.strip()
+        if v and version_tuple(v) < MIN_DOTNET_SDK:
+            print(f"note: .NET SDK {v} is older than {'.'.join(map(str, MIN_DOTNET_SDK))}, which is the first with "
+                  "`dotnet list package --vulnerable`: .NET projects are not audited.", file=sys.stderr)
 
 
 def expand(path):
@@ -120,6 +139,7 @@ def main():
         "projects_root": expand(cfg["projects_root"]),
         "exclude_dirs": cfg.get("exclude_dirs", []),
         "risky_ports": cfg.get("risky_ports", []),
+        "runtime_search_roots": [expand(p) for p in cfg.get("runtime_search_roots") or ["%SystemDrive%\\"]],
         "artifact_url": artifact_url,
         "dry_run": a.dry_run or not artifact_url,
         "previous_run": previous_run(runs_root, run_dir),

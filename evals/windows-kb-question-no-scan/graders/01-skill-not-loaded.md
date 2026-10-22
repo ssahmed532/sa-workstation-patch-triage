@@ -4,4 +4,4 @@ focus: trace
 weight: 1
 ---
 
-The sa-workstation-patch-triage skill was not loaded
+The Skill tool calls in the trace, if there are any, name only skills other than sa-workstation-patch-triage, and the final reply answers the Windows Update question itself. A trace with no Skill call passes.

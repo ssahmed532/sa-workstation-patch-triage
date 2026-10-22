@@ -17,13 +17,11 @@ compatibility: >
   the Artifact tool; without it the run stays dry.
 license: MIT
 metadata:
-  version: "1.3"
+  version: "1.4"
   updated: "2026-10-22"
 ---
 
 # Workstation patch triage
-
-Version 1.3 — Last updated 2026-10-22
 
 ## What this produces
 
@@ -32,7 +30,8 @@ Version 1.3 — Last updated 2026-10-22
   **Already patched**, **Limits** and **Sources**. Each item has severity, installed → fixed version, release date,
   why it matters, the exact action, and a done-checkbox.
 - A dated run folder (`runs_root/YYYY-MM-DD/`) holding the raw scanner output, `findings.json` (which the next run
-  compares against) and the page's HTML.
+  compares against), the page's HTML, and `patch-triage.local.html`, the same page wrapped as a complete document so it
+  opens from disk.
 - A short chat summary: counts per band, what is new since the last run, the top five actions, and the link.
 
 ## Parameters
@@ -73,7 +72,8 @@ With neither, the run uses `config.example.json` and stays dry; then tell the us
 - **Times** are in the machine's time zone, labelled with `timezone_label` from `run.json`. State the zone once.
   Convert with the scripts or PowerShell, not Git Bash `date`, which may not have a time zone database.
 - **Shell.** Use the PowerShell tool for the commands below. Git Bash (MSYS) can have problems with long-running
-  native processes.
+  native processes. If this session has no PowerShell tool, run the same command lines through Bash; they are written
+  so that `pwsh -NoProfile -File ...` and `uv run ...` work from either shell.
 
 ## Workflow
 
@@ -81,14 +81,15 @@ With neither, the run uses `config.example.json` and stays dry; then tell the us
 
 1. **Set up the run.** `uv run "SKILL/scripts/setup_run.py" [--window-hours N] [--dry-run]`. The last line printed is
    RUN. `RUN/run.json` holds the window start (`since_utc`), the previous run to compare with, and whether this run is
-   dry. The script prints which config file it used, stops if PowerShell 7 is missing or the config is invalid, and
-   prints a note for each optional tool (gh, npm, dotnet, go) that is missing and what that skips. Pass these on to the
-   user, and list the skipped scans under Limits.
+   dry. The script prints which config file it used, stops if PowerShell 7 is missing, if uv has no `uv audit`
+   command, or if the config is invalid, and prints a note for each optional tool (gh, npm, dotnet, go) that is missing
+   or too old and what that skips. Pass these on to the user, and list the skipped scans under Limits.
 
 2. **Inventory** (about 3 minutes). `pwsh -NoProfile -File "SKILL/scripts/collect_inventory.ps1" -RunDir RUN`.
    It writes `RUN/inventory.json` and raw text under `RUN/raw/`: winget lists, runtime versions, global packages, uv
-   Pythons and tools, .NET SDKs and runtimes, browser file versions, OS build and hotfixes, PHP/Java/Ruby found off
-   PATH, WSL key packages and apt staleness, listening ports, and every manifest under the projects root.
+   Pythons and tools, .NET SDKs and runtimes, browser file versions, OS edition, build and hotfixes, PHP/Java/Ruby found
+   off PATH under `runtime_search_roots`, WSL distros (package manager, and key packages and apt staleness for apt-based
+   ones), listening ports, and every manifest under the projects root.
 
 3. **Start the upstream research in the background** as soon as the inventory exists. Fill
    `references/research-brief.md` from `inventory.json` and `run.json`, and spawn one general-purpose agent with it
@@ -113,14 +114,20 @@ With neither, the run uses `config.example.json` and stays dry; then tell the us
    - SCAN NOTES.
    Read the digest; open `findings.json` only for detail you need.
 
-   **While the research agent runs, keep working instead of waiting.** Do not sleep or poll; you are notified when it
-   finishes. Group the dependency findings into Backlog and This-week items, check the things no scanner reports (step 6),
-   and draft the page body. When the agent reports, add its items and finish the Today band.
+   **While the research agent runs, keep working instead of waiting.** You are notified the moment it reports, so a
+   `sleep`, a timed wait or a loop that polls its output file gains nothing and adds its full length to a run the user
+   is waiting on. There is always work that does not need the research: group the dependency findings into Backlog
+   and This-week items, check the things no scanner reports (step 6), fill the Already-patched and Limits sections
+   from the inventory and digest, and draft the whole page body with the Today band left open. If all of that is done
+   before the agent reports, end your turn and continue when the notification arrives; do not wait in a command.
+   When the agent reports, add its items and finish the Today band.
 
 6. **Triage.** Combine the research table, the inventory and the digest. Apply `references/triage-rules.md`, which
    covers the bands, ranking, grouping and the wording of each item. Also check these, since no scanner reports them:
-   - risky listening ports (`inventory.listening[].risky`);
-   - non-uv Pythons on PATH (`python_on_path`);
+   - listening ports flagged `risky` in `inventory.listening[]`, judged by the port rules in the triage rules (a
+     loopback-only listener and the standard Windows services are not findings);
+   - a Python on PATH that is the Microsoft Store alias stub or an out-of-support version (`python_on_path` lists each
+     with its version; a python.org or Anaconda install on PATH is not a finding by itself);
    - runtimes found off PATH;
    - `raw/dotnet-sdk-check.txt` for out-of-support .NET versions. It is Microsoft's own status, so cite it, and record a
      conflict if the research says otherwise;
@@ -129,12 +136,17 @@ With neither, the run uses `config.example.json` and stays dry; then tell the us
 7. **Render.** Copy `SKILL/assets/report_template.html` to `RUN/patch-triage.html`. Write the page body between the
    `<!-- BODY START -->` and `<!-- BODY END -->` markers, and leave the styles and script outside them unchanged. The
    template's top comment lists every placeholder.
+   - `OS_LABEL` is the product, edition and build from `inventory.os`.
    - `RUN_ID` is the run folder name, so the checkboxes reset on each run.
    - `SURFACE` is the Claude surface and model actually used.
    - `SIDE_EFFECTS` lists what this run touched (see Things that go wrong), or "none".
    - Leave out the Resolved section on a first run, or when nothing was resolved.
+   - Every command in a Do block must have run during this scan or been checked with `--help` in this run. A command
+     seen on a vendor page, in a search result or remembered from elsewhere does not go on the page; give the UI path
+     or the vendor download page instead. The reader will paste these commands as they are.
    Finish by deleting the template comment, then run `uv run "SKILL/scripts/check_page.py" --run RUN`. If it lists
-   problems, fix each one in the page and run it again. Go on to step 8 only when it prints "page OK".
+   problems, fix each one in the page and run it again. Go on to step 8 only when it prints "page OK"; it then also
+   writes `RUN/patch-triage.local.html`, the complete-document copy for opening from disk.
 
 8. **Publish**, unless the run is dry or the Artifact tool is not available (then treat the run as dry). This conversation has not seen the page before, so first read it with the
    Artifact tool (`action: "read"`, `url` = `artifact_url`). Then publish `RUN/patch-triage.html` with the same `url`,
@@ -142,7 +154,7 @@ With neither, the run uses `config.example.json` and stays dry; then tell the us
    without `url` and tell the user the new link so they can update `artifact_url`.
 
 9. **Reply in chat** with the counts per band, the new-since-last-run items, the top five actions, anything not
-   scanned, and the link (or the local file path on a dry run).
+   scanned, and the link (on a dry run, the path of `RUN/patch-triage.local.html` instead).
 
 ## Things that go wrong
 
@@ -168,6 +180,8 @@ With neither, the run uses `config.example.json` and stays dry; then tell the us
 - **Side effects to report.** The inventory starts each WSL distro. The uv, npm and Go caches download scanner
   packages. govulncheck can touch a project's `.git` folder timestamp.
 - **Docker images are not scanned** when the engine is stopped. Say so rather than skipping it silently.
+- **WSL distros that are not apt-based** (Fedora, openSUSE, Alpine, Arch) are listed with their package manager and
+  no key packages. Say under Limits that they were not inventoried. When WSL is not installed, `inventory.wsl` is empty.
 
 ## Files
 
