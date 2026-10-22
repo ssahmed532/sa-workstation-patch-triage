@@ -29,8 +29,8 @@ The workflow and its rules are in [SKILL.md](SKILL.md). The triage rules are in 
 ## Install
 
 ```powershell
-git clone <this repo> E:\personal\sa-workstation-patch-triage
-cd E:\personal\sa-workstation-patch-triage
+git clone https://github.com/ssahmed532/sa-workstation-patch-triage D:\3rd_party_skills\sa-workstation-patch-triage
+cd D:\3rd_party_skills\sa-workstation-patch-triage
 ./install.ps1
 ```
 
