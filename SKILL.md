@@ -17,8 +17,8 @@ compatibility: >
   the Artifact tool; without it the run stays dry.
 license: MIT
 metadata:
-  version: "1.4"
-  updated: "2026-10-22"
+  version: "1.5"
+  updated: "2026-10-23"
 ---
 
 # Workstation patch triage

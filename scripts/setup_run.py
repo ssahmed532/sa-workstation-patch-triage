@@ -119,12 +119,11 @@ def main():
     window = a.window_hours or cfg.get("window_hours", 24)
 
     runs_root = expand(cfg["runs_root"])
-    name = now_local.strftime("%Y-%m-%d")
-    run_dir = os.path.join(runs_root, name)
-    if os.path.exists(run_dir):  # second run on the same day keeps the first one intact
-        run_dir = os.path.join(runs_root, now_local.strftime("%Y-%m-%d-%H%M"))
-    os.makedirs(os.path.join(run_dir, "raw"), exist_ok=True)
-    os.makedirs(os.path.join(run_dir, "deps"), exist_ok=True)
+    # a later run on the same day, or in the same minute, never reuses an earlier run's folder
+    run_dir = next(d for d in (os.path.join(runs_root, now_local.strftime(f)) for f in ("%Y-%m-%d", "%Y-%m-%d-%H%M", "%Y-%m-%d-%H%M%S"))
+                   if not os.path.exists(d))
+    os.makedirs(os.path.join(run_dir, "raw"))
+    os.makedirs(os.path.join(run_dir, "deps"))
 
     artifact_url = cfg.get("artifact_url") or ""
     run = {
