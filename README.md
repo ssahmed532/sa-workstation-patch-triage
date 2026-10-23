@@ -122,6 +122,9 @@ usage is not included in the token figures):
 A run with more projects, or on a day with many advisories, costs more. On a Pro plan one Opus run is a large share of
 a five-hour usage window.
 
+Use Opus for this skill. If your usage limits do not allow Opus, use Sonnet. The skill also runs on Haiku, but that is
+not advisable: its results are less accurate, and it can miss or skip important gaps and vulnerabilities.
+
 ## What a run changes
 
 Nothing in your projects or installs. The side effects (each WSL distro is started, and the uv, npm and Go caches
