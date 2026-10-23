@@ -45,6 +45,17 @@ repo is the only copy and edits are live. It creates no config; the first run do
 a client machine by default, and PowerShell 7 blocks scripts that carry the internet mark, which a ZIP download of this
 repo has and a `git clone` does not. For a ZIP, running `Unblock-File` on the `.ps1` files is the alternative.
 
+Alternatively, clone the repo straight into the folder where Claude Code keeps its skills. No installer and no junction
+are needed, and the clone is then the only copy:
+
+```powershell
+cd ~/.claude/skills
+git clone https://github.com/ssahmed532/sa-workstation-patch-triage
+```
+
+Keep the folder name `sa-workstation-patch-triage`, which `git clone` uses by default. If `install.ps1` already
+linked that name, remove the junction first. Restart Claude Code afterwards.
+
 ## Configure
 
 The first run on a machine configures the skill, and scans nothing until that is done. `setup_run.py` stops with
