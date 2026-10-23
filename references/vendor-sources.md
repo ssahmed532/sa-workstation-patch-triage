@@ -36,7 +36,7 @@ Prefer the vendor's page. When a news site or aggregator disagrees with it, go w
 | FortiClient | https://www.fortiguard.com/psirt (filter by FortiClient; usually IT-managed) |
 | ISC BIND | https://kb.isc.org/docs/aa-00913. There are no Windows builds after 9.17, so an installed Windows BIND cannot be patched |
 | WSL | https://github.com/microsoft/WSL/releases |
-| Adobe Acrobat | https://helpx.adobe.com/security/products/acrobat.html (it sometimes returns 403 to automated fetches; then use the APSB bulletin found by search, and say so. Adobe was reported to be moving bulletins to its Trust Center in October 2026; if the page says so, follow its link and record the new address under Limits so this list can be updated) |
+| Adobe Acrobat | https://www.adobe.com/trust/security/bulletins-and-advisories.html (Adobe's Trust Center, where bulletins are published from October 2026). The older APSB bulletins remain at https://helpx.adobe.com/security/products/acrobat.html, which sometimes returns 403 to automated fetches |
 | Microsoft 365 Apps | https://learn.microsoft.com/en-us/officeupdates/microsoft365-apps-security-updates. Compare with the installed build, and say which update channel it is on if the build number shows it |
 | OneDrive, Teams and other Microsoft apps | MSRC (https://msrc.microsoft.com/update-guide), filtered by product |
 | Zed | https://zed.dev/releases/stable and https://github.com/zed-industries/zed/security/advisories |

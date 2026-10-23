@@ -17,7 +17,7 @@ compatibility: >
   the Artifact tool; without it the run stays dry.
 license: MIT
 metadata:
-  version: "1.7"
+  version: "1.7.1"
   updated: "2026-10-23"
 ---
 
