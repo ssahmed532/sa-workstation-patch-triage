@@ -24,7 +24,7 @@ $env:WSL_UTF8 = '1'   # otherwise wsl.exe prints UTF-16 with NULs between charac
 function Save-Raw([string]$name, $text) { $text | Out-String -Width 400 | Set-Content (Join-Path $raw $name) -Encoding utf8 }
 function First-Line($block) { try { (& $block 2>&1 | Select-Object -First 1 | Out-String).Trim() } catch { "error: $_" } }
 
-$inv = [ordered]@{ skill_version = $run.skill_version; collected_utc = (Get-Date).ToUniversalTime().ToString('s') + 'Z' }
+$inv = [ordered]@{ skill_version = $run.skill_version; collected_utc = (Get-Date).ToUniversalTime().ToString('s') + 'Z'; hostname = $env:COMPUTERNAME }
 
 # --- winget: kept as text; the table format does not parse reliably, and winget misses many updates anyway
 Save-Raw 'winget-upgrade.txt' (winget upgrade --include-unknown --accept-source-agreements --disable-interactivity 2>&1)
@@ -62,7 +62,7 @@ $bunHome = if ($env:BUN_INSTALL) { $env:BUN_INSTALL } else { Join-Path $env:USER
 $inv.bun_global_root = Join-Path $bunHome 'install\global\node_modules'
 Save-Raw 'uv-python.txt' (uv python list --only-installed 2>&1)
 Save-Raw 'uv-tools.txt'  (uv tool list --show-version-specifiers 2>&1)
-$inv.uv_tools = foreach ($l in (uv tool list 2>$null)) { if ($l -match '^(\S+) v(\S+)') { @{ name = $Matches[1]; version = $Matches[2] } } }
+$inv.uv_tools = @(foreach ($l in (uv tool list 2>$null)) { if ($l -match '^(\S+) v(\S+)') { @{ name = $Matches[1]; version = $Matches[2] } } })
 $inv.uv_pythons = @(uv python list --only-installed 2>$null | ForEach-Object { ($_ -split '\s+')[0] } | Sort-Object -Unique)
 # `dotnet sdk check` is Microsoft's own support-status view; keep it next to the raw lists
 Save-Raw 'dotnet-sdk-check.txt' (dotnet sdk check 2>&1)

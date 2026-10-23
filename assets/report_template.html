@@ -1,4 +1,4 @@
-<title>Workstation Patch Triage</title>
+<title>Windows patch triage report: {{HOSTNAME}}</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -7,7 +7,8 @@
   Report template for sa-workstation-patch-triage. How to fill it:
   - Write the whole page body between the BODY START and BODY END markers; everything outside them (styles, script)
     stays as it is, so the page looks and behaves the same from run to run.
-  - Placeholders are written as double braces around a NAME. The names: OS_LABEL, WINDOW_LABEL, RUN_DATE_LONG, TZ_LABEL,
+  - Placeholders are written as double braces around a NAME. The names: HOSTNAME (also in the title above this
+    comment, the one placeholder outside the markers besides RUN_ID), OS_LABEL, WINDOW_LABEL, RUN_DATE_LONG, TZ_LABEL,
     WINDOW_HOURS, PREVIOUS_RUN_LABEL, SIDE_EFFECTS, N_TODAY, TODAY_SUB, N_WEEK, WEEK_SUB, N_BACKLOG, BACKLOG_SUB,
     N_CURRENT, CURRENT_SUB, TODAY_HEADING, TODAY_INTRO, WEEK_HEADING, WEEK_INTRO, BACKLOG_HEADING, BACKLOG_INTRO,
     SURFACE, SKILL_VERSION, and RUN_ID inside the script.
@@ -165,7 +166,7 @@ footer { border-top: 1px solid var(--line); padding-top: 16px; font-size: 13px; 
 
   <header class="head">
     <span class="eyebrow">Security patch triage · {{OS_LABEL}} dev workstation</span>
-    <h1>Workstation Patch Triage</h1>
+    <h1>Windows patch triage report: {{HOSTNAME}}</h1>
     <p class="lede">What to update on this machine after the advisories of {{WINDOW_LABEL}}, in the order to do it. Work the red band first. Tick each item as you finish it; ticks are saved in this browser only and reset with each new run.</p>
     <div class="meta">
       <span>Scanned <b>{{RUN_DATE_LONG}}</b> (times in {{TZ_LABEL}})</span>

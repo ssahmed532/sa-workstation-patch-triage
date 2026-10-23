@@ -17,7 +17,7 @@ compatibility: >
   the Artifact tool; without it the run stays dry.
 license: MIT
 metadata:
-  version: "1.5"
+  version: "1.6"
   updated: "2026-10-23"
 ---
 
@@ -136,6 +136,7 @@ With neither, the run uses `config.example.json` and stays dry; then tell the us
 7. **Render.** Copy `SKILL/assets/report_template.html` to `RUN/patch-triage.html`. Write the page body between the
    `<!-- BODY START -->` and `<!-- BODY END -->` markers, and leave the styles and script outside them unchanged. The
    template's top comment lists every placeholder.
+   - `HOSTNAME` is `inventory.hostname`. Fill it in the `<title>` above the markers as well as in the body.
    - `OS_LABEL` is the product, edition and build from `inventory.os`.
    - `RUN_ID` is the run folder name, so the checkboxes reset on each run.
    - `SURFACE` is the Claude surface and model actually used.
