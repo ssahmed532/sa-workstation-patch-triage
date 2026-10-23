@@ -1,7 +1,7 @@
 #!/usr/bin/env pwsh
 <#
 .SYNOPSIS
-    Install this skill into Claude Code by linking ~/.claude/skills/sa-workstation-patch-triage to this repo.
+    Install this skill into Claude Code by linking ~/.claude/skills/win-dev-patch-triage to this repo.
 
 .DESCRIPTION
     Creates a directory junction (no admin rights needed), so edits in the repo are live in Claude Code
@@ -16,7 +16,7 @@ param()
 
 $ErrorActionPreference = 'Stop'
 $repo = $PSScriptRoot
-$link = Join-Path $env:USERPROFILE '.claude\skills\sa-workstation-patch-triage'
+$link = Join-Path $env:USERPROFILE '.claude\skills\win-dev-patch-triage'
 
 if (Test-Path $link) {
     $item = Get-Item $link -Force
@@ -31,5 +31,5 @@ if (Test-Path $link) {
     Write-Host "Installed: $link -> $repo" -ForegroundColor Green
 }
 
-Write-Host "Restart Claude Code so it picks up the skill, then run /sa-workstation-patch-triage."
+Write-Host "Restart Claude Code so it picks up the skill, then run /win-dev-patch-triage."
 Write-Host "The first run on this machine asks for the projects folders and the report page before it scans anything."

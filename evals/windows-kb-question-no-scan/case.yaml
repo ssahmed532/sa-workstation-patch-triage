@@ -2,4 +2,4 @@ schema_version: "1.1"
 name: windows-kb-question-no-scan
 expected_outcome: |
   A decision about a single Windows update, which this skill's description excludes. Claude does not load
-  sa-workstation-patch-triage and does not start a workstation scan.
+  win-dev-patch-triage and does not start a workstation scan.

@@ -31,7 +31,7 @@ os.environ.update({"DOTNET_SKIP_FIRST_TIME_EXPERIENCE": "1", "DOTNET_GENERATE_AS
 
 SKILL_DIR = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 HOSTNAME = (os.environ.get("COMPUTERNAME") or "").upper()
-CONFIG_DIR = os.path.join(os.environ.get("APPDATA") or os.path.expanduser("~"), "sa-workstation-patch-triage")
+CONFIG_DIR = os.path.join(os.environ.get("APPDATA") or os.path.expanduser("~"), "win-dev-patch-triage")
 # One file per machine: %APPDATA% roams between machines on a domain profile, and each machine has its own projects and page
 HOST_CONFIG = os.path.join(CONFIG_DIR, f"config-{HOSTNAME}.json")
 LEGACY_CONFIG = os.path.join(CONFIG_DIR, "config.json")

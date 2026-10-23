@@ -1,4 +1,4 @@
-# sa-workstation-patch-triage
+# win-dev-patch-triage
 
 A Claude Code skill that runs a read-only security patch triage of a Windows 11 developer workstation and publishes a
 ranked remediation page: what to update today, this week, and in the backlog, with a comparison against the previous run.
@@ -33,12 +33,12 @@ The workflow and its rules are in [SKILL.md](SKILL.md). The triage rules are in 
 Clone the repo wherever you keep tools, then run the installer from that folder:
 
 ```powershell
-git clone https://github.com/ssahmed532/sa-workstation-patch-triage
-cd sa-workstation-patch-triage
+git clone https://github.com/ssahmed532/win-dev-patch-triage
+cd win-dev-patch-triage
 pwsh -ExecutionPolicy Bypass -File .\install.ps1
 ```
 
-`install.ps1` links `~/.claude/skills/sa-workstation-patch-triage` to this folder with a directory junction, so the
+`install.ps1` links `~/.claude/skills/win-dev-patch-triage` to this folder with a directory junction, so the
 repo is the only copy and edits are live. It creates no config; the first run does that. Restart Claude Code afterwards.
 
 `-ExecutionPolicy Bypass` applies to that one command only. Without it, Windows PowerShell 5.1 blocks every script on
@@ -50,10 +50,10 @@ are needed, and the clone is then the only copy:
 
 ```powershell
 cd ~/.claude/skills
-git clone https://github.com/ssahmed532/sa-workstation-patch-triage
+git clone https://github.com/ssahmed532/win-dev-patch-triage
 ```
 
-Keep the folder name `sa-workstation-patch-triage`, which `git clone` uses by default. If `install.ps1` already
+Keep the folder name `win-dev-patch-triage`, which `git clone` uses by default. If `install.ps1` already
 linked that name, remove the junction first. Restart Claude Code afterwards.
 
 ## Configure
@@ -65,7 +65,7 @@ the mandatory settings and saves them with `setup_run.py --init`, which validate
 - **projects folders**: one or more, for example `D:\work` and `~/source/repos`;
 - **the report page**: an existing claude.ai artifact link, a new page, or local-only.
 
-The config is per machine: `%APPDATA%\sa-workstation-patch-triage\config-<HOSTNAME>.json`. `%APPDATA%` roams
+The config is per machine: `%APPDATA%\win-dev-patch-triage\config-<HOSTNAME>.json`. `%APPDATA%` roams
 between machines on a domain profile, and each machine has its own projects and its own page. A config written on
 another machine, or a `config.json` from before v1.7, also triggers the first-run questions; the old values are
 offered as answers. To change a setting later, run `--init` again with `--force`, the projects roots and the
@@ -99,9 +99,9 @@ A `config.local.json` in the repo folder is used only when the per-machine file 
 In Claude Code:
 
 ```text
-/sa-workstation-patch-triage
-/sa-workstation-patch-triage 48
-/sa-workstation-patch-triage dry-run
+/win-dev-patch-triage
+/win-dev-patch-triage 48
+/win-dev-patch-triage dry-run
 ```
 
 The skill also triggers on requests such as "what needs patching on my machine". For a narrower question, such as
@@ -198,7 +198,7 @@ this skill. Run them after changing the skill, once for each model your team use
 
 `claude plugin eval` can run only the two question cases. On native Windows it refuses any run that is granted Bash
 or PowerShell, and its sandbox hides your home folder, so the dry-run case cannot run under it. The command also
-needs a plugin root, so wrap a copy of the skill in one: put the skill in `<dir>/skills/sa-workstation-patch-triage/`,
+needs a plugin root, so wrap a copy of the skill in one: put the skill in `<dir>/skills/win-dev-patch-triage/`,
 the cases in `<dir>/evals/`, and `{"name": "patch-triage-eval"}` in `<dir>/.claude-plugin/plugin.json`. Then, from
 `<dir>`:
 

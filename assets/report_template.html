@@ -4,7 +4,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Condensed:wght@500;600;700&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&display=swap">
 <!--
-  Report template for sa-workstation-patch-triage. How to fill it:
+  Report template for win-dev-patch-triage. How to fill it:
   - Write the whole page body between the BODY START and BODY END markers; everything outside them (styles, script)
     stays as it is, so the page looks and behaves the same from run to run.
   - Placeholders are written as double braces around a NAME. The names: HOSTNAME (also in the title above this
@@ -293,7 +293,7 @@ footer { border-top: 1px solid var(--line); padding-top: 16px; font-size: 13px; 
 
   <footer>
     <span>Scan data: uv audit (OSV), pip-audit, npm audit, dotnet list package --vulnerable, govulncheck, OSV for global installs, winget, and GitHub Advisory Database publish dates.</span>
-    <span>Produced with {{SURFACE}} using sa-workstation-patch-triage v{{SKILL_VERSION}} · {{RUN_DATE_LONG}}</span>
+    <span>Produced with {{SURFACE}} using win-dev-patch-triage v{{SKILL_VERSION}} · {{RUN_DATE_LONG}}</span>
   </footer>
 </div>
 <!-- BODY END -->

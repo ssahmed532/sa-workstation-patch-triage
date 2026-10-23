@@ -29,7 +29,7 @@ def main():
             problems.append(f"line {n}: placeholder {name} is not filled in")
         if re.search(r"<!--\s*sample", line):
             problems.append(f"line {n}: a sample block from the template is still there")
-        if "Report template for sa-workstation-patch-triage" in line:
+        if "Report template for win-dev-patch-triage" in line:
             problems.append(f"line {n}: the template's instruction comment is still there; delete it")
     for marker in ("<!-- BODY START -->", "<!-- BODY END -->"):
         if marker not in text:

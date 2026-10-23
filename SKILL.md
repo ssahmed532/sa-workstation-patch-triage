@@ -1,5 +1,5 @@
 ---
-name: sa-workstation-patch-triage
+name: win-dev-patch-triage
 description: >
   Read-only security patch triage of a Windows developer workstation. It inventories installed apps,
   browsers, language runtimes, global npm/bun/uv tools, Go-built programs, .NET, Go, WSL distros and listening
@@ -45,7 +45,7 @@ Read them from the arguments. Both are optional.
 
 ## Configuration (first run on a machine)
 
-Each machine has its own config, `%APPDATA%\sa-workstation-patch-triage\config-<HOSTNAME>.json`, outside the skill
+Each machine has its own config, `%APPDATA%\win-dev-patch-triage\config-<HOSTNAME>.json`, outside the skill
 folder, which may be read-only or replaced by an update. It is one file per hostname because `%APPDATA%` roams between
 machines on a domain profile. A `config.local.json` next to this file is used only when that file does not exist.
 
