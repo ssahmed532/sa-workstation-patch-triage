@@ -2,8 +2,8 @@
 name: sa-workstation-patch-triage
 description: >
   Read-only security patch triage of a Windows developer workstation. It inventories installed apps,
-  browsers, language runtimes, global npm/bun/uv tools, .NET, Go, WSL distros and listening ports;
-  audits every dependency lockfile under a projects folder (uv, pip, npm, NuGet, Go); checks vendor
+  browsers, language runtimes, global npm/bun/uv tools, Go-built programs, .NET, Go, WSL distros and listening
+  ports; audits every dependency lockfile under one or more projects folders (uv, pip, npm, NuGet, Go, Cargo); checks vendor
   advisories released in the last N hours (default 24); and publishes a ranked remediation page:
   Today / This week / Backlog, with a delta against the previous run. Use this skill when the user
   asks what needs patching or updating on their machine, asks to scan installed packages, runtimes or
@@ -17,7 +17,7 @@ compatibility: >
   the Artifact tool; without it the run stays dry.
 license: MIT
 metadata:
-  version: "1.6"
+  version: "1.7"
   updated: "2026-10-23"
 ---
 
@@ -41,12 +41,35 @@ Read them from the arguments. Both are optional.
 | Parameter | Form | Default |
 |---|---|---|
 | Window | a number of hours (`48`, `48h`) | `window_hours` in the config (24) |
-| Dry run | the word `dry-run` | off. With it, the page is written to the run folder and not published. A run is also dry when `artifact_url` is empty |
+| Dry run | the word `dry-run` | off. With it, the page is written to the run folder and not published. A run is also dry when the config sets `local_only` |
 
-Configuration lives in `%APPDATA%\sa-workstation-patch-triage\config.json`, outside the skill folder, which may be
-read-only or replaced by an update. A `config.local.json` next to this file is used only when that file does not exist.
-With neither, the run uses `config.example.json` and stays dry; then tell the user to copy the example to the
-`%APPDATA%` path and fill in `artifact_url`. Step 1 prints which file it used.
+## Configuration (first run on a machine)
+
+Each machine has its own config, `%APPDATA%\sa-workstation-patch-triage\config-<HOSTNAME>.json`, outside the skill
+folder, which may be read-only or replaced by an update. It is one file per hostname because `%APPDATA%` roams between
+machines on a domain profile. A `config.local.json` next to this file is used only when that file does not exist.
+
+When this machine has no valid config, step 1 prints a `CONFIG_REQUIRED` block and exits with code 3. This includes
+a config written for another hostname, and a `config.json` from before v1.7. **Stop there. Do not run any later
+step, and never write or edit the config file yourself.** Ask the user for the two mandatory settings, offering the
+block's suggestions and any values it lists from an old config:
+1. **Projects roots**: one or more folders that hold git work trees in active use. Several are allowed, for example
+   `D:\work` and `~/source/repos`. The block lists folders that contain git repos, with counts. A root inside another
+   is refused, since it would scan the same projects twice, and so are two roots with the same folder name, since
+   projects are named after their root's folder. A root that is missing on a later run (an unplugged drive) is
+   reported as not scanned, and the run goes on with the others.
+2. **The report page**: an existing claude.ai artifact link, a new page, or local-only. For a new page, publish a
+   short placeholder titled "Windows patch triage report: <HOSTNAME>" with the Artifact tool and use its link.
+   Local-only runs are always dry.
+
+Also show the defaults (runs folder, window, time zone label) and ask whether any folders hold third-party code
+whose build files must not be evaluated (`untrusted_projects`). Then save the answers with
+`uv run "SKILL/scripts/setup_run.py" --init --projects-root <folder> [--projects-root <folder> ...]
+(--artifact-url <url> | --local-only) [--runs-root ...] [--window-hours N] [--timezone-label ...] [--untrusted-project <folder> ...]`.
+It validates every value and refuses to overwrite an existing config unless given `--force`, which the
+`CONFIG_REQUIRED` block includes when the file exists. With `--force`, options left out keep their current values;
+`--clear-untrusted` empties the untrusted list. If it reports a problem, ask the user again. Once it succeeds, start
+the run again at step 1.
 
 ## Ground rules
 
@@ -81,15 +104,17 @@ With neither, the run uses `config.example.json` and stays dry; then tell the us
 
 1. **Set up the run.** `uv run "SKILL/scripts/setup_run.py" [--window-hours N] [--dry-run]`. The last line printed is
    RUN. `RUN/run.json` holds the window start (`since_utc`), the previous run to compare with, and whether this run is
-   dry. The script prints which config file it used, stops if PowerShell 7 is missing, if uv has no `uv audit`
-   command, or if the config is invalid, and prints a note for each optional tool (gh, npm, dotnet, go) that is missing
-   or too old and what that skips. Pass these on to the user, and list the skipped scans under Limits.
+   dry. The script prints which config file it used and stops if PowerShell 7 is missing or if uv has no `uv audit`
+   command. It exits with code 3 and `CONFIG_REQUIRED` when the configuration is missing or invalid; follow
+   Configuration above. It prints a note for each optional tool (gh, npm, dotnet, go) that is missing or too old and
+   what that skips. Pass these on to the user, and list the skipped scans under Limits.
 
 2. **Inventory** (about 3 minutes). `pwsh -NoProfile -File "SKILL/scripts/collect_inventory.ps1" -RunDir RUN`.
    It writes `RUN/inventory.json` and raw text under `RUN/raw/`: winget lists, runtime versions, global packages, uv
    Pythons and tools, .NET SDKs and runtimes, browser file versions, OS edition, build and hotfixes, PHP/Java/Ruby found
    off PATH under `runtime_search_roots`, WSL distros (package manager, and key packages and apt staleness for apt-based
-   ones), listening ports, and every manifest under the projects root.
+   ones), listening ports, and every manifest under the projects roots. For each command it records every folder on
+   PATH that holds a copy, and it lists apps registered with more than one version (`duplicate_apps`).
 
 3. **Start the upstream research in the background** as soon as the inventory exists. Fill
    `references/research-brief.md` from `inventory.json` and `run.json`, and spawn one general-purpose agent with it
@@ -97,9 +122,13 @@ With neither, the run uses `config.example.json` and stays dry; then tell the us
    are not available, do the same research inline.
 
 4. **Dependency scans** (about 2 minutes, in parallel with step 3). `uv run "SKILL/scripts/scan_dependencies.py" --run RUN`.
-   It runs uv audit, pip-audit (on a resolved copy), npm audit, dotnet list --vulnerable and govulncheck. It also checks
-   every package bundled inside global npm and bun installs, and the uv tools, against OSV. Anything it could not scan
-   is printed as NOT SCANNED and recorded in `RUN/deps/scan_status.json`.
+   It runs uv audit, pip-audit (on a resolved copy), npm audit, dotnet list --vulnerable and govulncheck. It checks
+   these against OSV: every package bundled inside global npm and bun installs, the uv tools, the crates in each
+   `Cargo.lock`, and the Go standard library and modules compiled into each Go program on PATH. That last check reads
+   the build info from the file and never runs the program. Projects under `untrusted_projects` get no .NET or Go
+   scan and no resolution of a manifest that has no lockfile. A solution or Go module whose folder contains an
+   untrusted folder is skipped too.
+   Anything it could not scan is printed as NOT SCANNED and recorded in `RUN/deps/scan_status.json`.
 
 5. **Findings.** `uv run "SKILL/scripts/build_findings.py" --run RUN`. It normalises everything into
    `RUN/findings.json`, adds severity, CVSS and publish dates from the GitHub Advisory Database (with OSV as fallback),
@@ -110,6 +139,8 @@ With neither, the run uses `config.example.json` and stays dry; then tell the us
    - LAST 72 HOURS;
    - RESOLVED;
    - INSTALLED-SOFTWARE CHANGES since the previous run (apps, runtimes, OS, tools, WSL packages);
+   - DUPLICATE INSTALLS: apps registered with more than one version, and commands found in several PATH folders,
+     marked when a user-writable copy shadows a system one;
    - NOT SCANNED;
    - SCAN NOTES.
    Read the digest; open `findings.json` only for detail you need.
@@ -129,6 +160,7 @@ With neither, the run uses `config.example.json` and stays dry; then tell the us
    - a Python on PATH that is the Microsoft Store alias stub or an out-of-support version (`python_on_path` lists each
      with its version; a python.org or Anaconda install on PATH is not a finding by itself);
    - runtimes found off PATH;
+   - the DUPLICATE INSTALLS section of the digest, judged by the duplicate rules in the triage rules;
    - `raw/dotnet-sdk-check.txt` for out-of-support .NET versions. It is Microsoft's own status, so cite it, and record a
      conflict if the research says otherwise;
    - Dockerfile base images (`RUN/deps/dockerfiles.json`), noted as not scanned if Docker is not running.
@@ -172,21 +204,34 @@ With neither, the run uses `config.example.json` and stays dry; then tell the us
   merges them by CVE, so use its counts instead of counting raw records.
 - **winget IDs can mislead.** For example, `OpenJS.NodeJS.22` can hold Node 24. Trust the version the runtime reports,
   and list Edge once, using the version of `msedge.exe` (winget also shows an MSIX copy with a different build).
-- **.NET projects that were never restored** are reported as not scanned, because the scan runs `dotnet list` with
-  `--no-restore` to stay read-only. The action for the user is to run `dotnet restore` in that project.
+- **.NET projects that were never restored** are reported as not scanned, because the scan never restores, to stay
+  read-only. It passes `--no-restore` only where the SDK has that option; SDK 9 rejects it, and its `dotnet list
+  package` never restores anyway. The action for the user is to run `dotnet restore` in that project.
+- **Building is running code.** `dotnet list` evaluates MSBuild files, govulncheck loads Go packages, and resolving a
+  `pyproject.toml` or `requirements*.txt` without a lockfile can build packages from the indexes the repo names. So
+  scanning a cloned third-party repo can run code from it. Folders in `untrusted_projects` are skipped for those
+  scans and reported as not scanned. Lockfile audits (uv.lock, package-lock.json, Cargo.lock) build nothing and still
+  run. Go always runs with `GOTOOLCHAIN=local`, so a `go.mod` cannot make Go download a toolchain. When the pinned
+  govulncheck needs a newer Go than the one installed, every Go project is reported as not scanned with Go's error,
+  and the action is to update Go.
+- **Go programs on PATH** are checked from their embedded build info. That shows which Go and module versions were
+  compiled in, but not whether the program calls the vulnerable code, and the Go vulnerability database gives no
+  severity. Treat a Go standard library fix that the vendor research calls a security release as This week, and
+  check whether the program's newest release is built with the fixed Go.
 - **Projects without a lockfile** are resolved fresh, with the newest installed uv Python that the project's
   `requires-python` allows (never a downloaded one). Their result shows what a new install would get today, not
   what an existing virtual environment contains. Say so under Limits (it shows under SCAN NOTES). A project no
   installed Python fits is reported as not scanned, with the version to install.
 - **Side effects to report.** The inventory starts each WSL distro. The uv, npm and Go caches download scanner
-  packages. govulncheck can touch a project's `.git` folder timestamp.
+  packages. govulncheck can touch a project's `.git` folder timestamp. The scripts turn off .NET's first-use setup,
+  which would otherwise create a development HTTPS certificate in the user's certificate store.
 - **Docker images are not scanned** when the engine is stopped. Say so rather than skipping it silently.
 - **WSL distros that are not apt-based** (Fedora, openSUSE, Alpine, Arch) are listed with their package manager and
   no key packages. Say under Limits that they were not inventoried. When WSL is not installed, `inventory.wsl` is empty.
 
 ## Files
 
-- `scripts/setup_run.py`: config, window, run folder, previous run.
+- `scripts/setup_run.py`: first-run configuration (`--init`), config checks, window, run folder, previous run.
 - `scripts/collect_inventory.ps1`: Windows inventory (PowerShell 7).
 - `scripts/scan_dependencies.py`: runs the dependency scanners. pip-audit and govulncheck are pinned there.
 - `scripts/build_findings.py`: normalises, enriches and compares the findings, and prints the digest.
@@ -196,5 +241,5 @@ With neither, the run uses `config.example.json` and stays dry; then tell the us
 - `references/vendor-sources.md`: the vendor pages to read on every run.
 - `references/research-brief.md`: the prompt for the research agent, with slots to fill from the inventory.
 - `assets/report_template.html`: the page layout.
-- `config.example.json`: copy it to `%APPDATA%\sa-workstation-patch-triage\config.json` and edit.
+- `config.example.json`: the defaults `setup_run.py --init` starts from; not read during a run.
 - `evals/`: test cases for changes to this skill; not used during a run.

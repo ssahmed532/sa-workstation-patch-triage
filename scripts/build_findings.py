@@ -50,12 +50,16 @@ def load(path):
         return json.load(f)
 
 
-def project_of(target, root):
-    try:
-        rel = os.path.relpath(target, root)
-    except ValueError:
-        return target
-    return rel if not rel.startswith("..") else target
+def project_of(target, roots):
+    """The target relative to the projects root that holds it; with several roots, prefixed by that root's folder name."""
+    for root in roots:
+        try:
+            rel = os.path.relpath(target, root)
+        except ValueError:  # another drive
+            continue
+        if not rel.startswith(".."):
+            return rel if len(roots) == 1 else os.path.join(os.path.basename(root.rstrip("\\/")) or root, rel)
+    return target
 
 
 # ---------- advisory lookups (cached per run) ----------
@@ -147,9 +151,9 @@ def from_npm(doc, project, lock):
                    (f"{entry['fixAvailable'].get('name')}@{entry['fixAvailable'].get('version')}" if isinstance(entry.get("fixAvailable"), dict) else None)}
 
 
-def from_dotnet(doc, root):
+def from_dotnet(doc, roots):
     for pr in doc.get("projects", []):
-        project = project_of(pr.get("path", ""), root)
+        project = project_of(pr.get("path", ""), roots)
         for fw in pr.get("frameworks", []) or []:
             for kind in ("topLevelPackages", "transitivePackages"):
                 for pk in fw.get(kind, []) or []:
@@ -173,16 +177,22 @@ def from_go(doc, project):
                    "scope_note": GO_SCOPE.get(v.get("scope"), v.get("scope"))}
 
 
-def from_osv_hits(doc, label):
+OSV_ECOSYSTEMS = {"npm": "npm", "PyPI": "pypi", "crates.io": "cargo", "Go": "go"}
+
+
+def from_osv_hits(doc, label, project=None):
+    """OSV results saved by scan_dependencies.py. With a project (a Cargo.lock), every hit belongs to it; otherwise each
+    hit is listed under the global install or program that bundles it."""
     for h in doc.get("hits", []):
         o = h.get("osv") or {}
         fixed = [e["fixed"] for af in o.get("affected", []) if (af.get("package") or {}).get("name") == h["name"]
                  for rg in af.get("ranges", []) for e in rg.get("events", []) if "fixed" in e]
-        for owner in h.get("owners") or [label]:
-            yield {"ecosystem": "npm" if "npm" in label or "bun" in label else "pypi", "project": f"{label}: {owner}",
+        for owner in [project] if project else h.get("owners") or [label]:
+            yield {"ecosystem": OSV_ECOSYSTEMS[doc["ecosystem"]], "project": project or f"{label}: {owner}",
                    "package": h["name"], "installed": h["version"], "ids": [h["id"]] + list(o.get("aliases") or []),
                    "title": o.get("summary"), "severity": (o.get("database_specific") or {}).get("severity"),
-                   "published": o.get("published"), "fixed_candidates": fixed, "scope_note": "bundled in a global install"}
+                   "published": o.get("published"), "fixed_candidates": fixed,
+                   "scope_note": doc.get("scope_note", "bundled in a global install")}
 
 
 def inventory_delta(old, new):
@@ -237,7 +247,7 @@ def main():
     a = ap.parse_args()
     run_dir = a.run
     cfg = load(os.path.join(run_dir, "run.json"))
-    root = cfg["projects_root"]
+    roots = cfg.get("projects_roots") or [cfg["projects_root"]]  # a run folder set up by v1.6 has one root
     deps = os.path.join(run_dir, "deps")
     status = load(os.path.join(deps, "scan_status.json"))["scans"]
 
@@ -247,7 +257,7 @@ def main():
             continue
         path = os.path.join(run_dir, s["output"])
         doc = load(path)
-        project = project_of(s["target"], root)
+        project = project_of(s["target"], roots)
         kind = s["kind"]
         if kind == "uv-audit":
             raw += from_uv(doc, project)
@@ -257,9 +267,11 @@ def main():
             lock_path = os.path.join(s["target"], "package-lock.json")
             raw += from_npm(doc, project, load(lock_path) if os.path.exists(lock_path) else None)
         elif kind == "dotnet-vulnerable":
-            raw += from_dotnet(doc, root)
+            raw += from_dotnet(doc, roots)
         elif kind == "govulncheck":
             raw += from_go(doc, project)
+        elif kind == "osv-cargo":
+            raw += from_osv_hits(doc, kind[4:], project)
         elif kind.startswith("osv-"):
             raw += from_osv_hits(doc, kind[4:])
 
@@ -379,6 +391,18 @@ def main():
         print(f"\nINSTALLED-SOFTWARE CHANGES SINCE PREVIOUS RUN ({len(changes)})")
         for c in changes or ["  none"]:
             print(c)
+
+    # no scanner reports these: an old copy left next to a new one, and a command whose user-folder copy runs instead of the system one
+    inv = load(os.path.join(run_dir, "inventory.json"))
+    dup_apps = inv.get("duplicate_apps") or []
+    dup_cmds = [r for r in inv.get("runtimes") or [] if len(r.get("all_paths") or []) > 1]
+    if dup_apps or dup_cmds:
+        print("\nDUPLICATE INSTALLS (an old copy stays exploitable until it is removed)")
+        for d in dup_apps:
+            print(f"  app      {' | '.join(d['versions'])}")
+        for r in dup_cmds:
+            flag = "  [SHADOWS A SYSTEM COPY: a user-writable folder comes first on PATH]" if r.get("shadows_system_copy") else ""
+            print(f"  command  {r['name']}: {' | '.join(r['all_paths'])} (the first one runs){flag}")
 
     if out["not_scanned"]:
         print("\nNOT SCANNED")

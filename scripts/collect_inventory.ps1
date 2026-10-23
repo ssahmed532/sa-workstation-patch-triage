@@ -5,7 +5,7 @@
     dependency manifests. Writes RUN/inventory.json plus raw text output under RUN/raw/.
 
 .DESCRIPTION
-    Reads the window, projects root, exclusions and ports from RUN/run.json (written by setup_run.py).
+    Reads the window, projects roots, exclusions and ports from RUN/run.json (written by setup_run.py).
     Nothing is installed, updated or changed. Starting each WSL distro to read its package list is
     the only side effect.
 
@@ -20,6 +20,10 @@ $run = Get-Content (Join-Path $RunDir 'run.json') -Raw | ConvertFrom-Json
 $raw = Join-Path $RunDir 'raw'
 New-Item -ItemType Directory -Force $raw | Out-Null
 $env:WSL_UTF8 = '1'   # otherwise wsl.exe prints UTF-16 with NULs between characters
+# Without these, the first dotnet call runs .NET's first-use setup, which creates a development HTTPS certificate
+$env:DOTNET_SKIP_FIRST_TIME_EXPERIENCE = '1'; $env:DOTNET_GENERATE_ASPNET_CERTIFICATE = 'false'
+$env:DOTNET_NOLOGO = '1'; $env:DOTNET_CLI_TELEMETRY_OPTOUT = '1'
+$env:GOTOOLCHAIN = 'local'  # `go version` in a folder whose go.mod asks for a newer Go would otherwise download one
 
 function Save-Raw([string]$name, $text) { $text | Out-String -Width 400 | Set-Content (Join-Path $raw $name) -Encoding utf8 }
 function First-Line($block) { try { (& $block 2>&1 | Select-Object -First 1 | Out-String).Trim() } catch { "error: $_" } }
@@ -41,10 +45,19 @@ $probes = [ordered]@{
     kubectl = { kubectl version --client }; helm = { helm version --short }; code = { code --version }
     php = { php --version }; ruby = { ruby --version }; claude = { claude --version }
 }
-$inv.runtimes = foreach ($k in $probes.Keys) {
-    $g = Get-Command $k -ErrorAction SilentlyContinue | Select-Object -First 1
-    [ordered]@{ name = $k; path = $g.Source; version = $(if ($g) { First-Line $probes[$k] } else { $null }) }
-}
+# Every folder on PATH that holds the command, in PATH order. A copy in a user-writable folder that comes before one in
+# Program Files or Windows shadows it: whatever can write to the user folder decides what runs.
+$systemDirs = @($env:ProgramFiles, ${env:ProgramFiles(x86)}, $env:SystemRoot) | Where-Object { $_ } | ForEach-Object { $_.TrimEnd('\') + '\' }
+$isSystem = { param($p) [bool]($systemDirs | Where-Object { $p.StartsWith($_, [StringComparison]::OrdinalIgnoreCase) }) }
+$inv.runtimes = @(foreach ($k in $probes.Keys) {
+        $seen = @{}  # one entry per folder (npm.cmd and npm.exe side by side are one copy), kept in PATH order
+        $all = @(Get-Command $k -All -CommandType Application -ErrorAction SilentlyContinue | ForEach-Object Source |
+                Where-Object { $d = Split-Path $_ -Parent; if ($seen[$d]) { $false } else { $seen[$d] = $true; $true } })
+        [ordered]@{
+            name = $k; path = $all[0]; version = $(if ($all) { First-Line $probes[$k] } else { $null }); all_paths = $all
+            shadows_system_copy = [bool]($all.Count -gt 1 -and -not (& $isSystem $all[0]) -and ($all | Select-Object -Skip 1 | Where-Object { & $isSystem $_ }))
+        }
+    })
 # Every python on PATH with its version. The Microsoft Store alias stub (under WindowsApps) opens the Store instead of
 # running Python, so it is marked without being executed. A python.org or Anaconda install here is not a finding by itself.
 $inv.python_on_path = @(Get-Command python, python3 -All -ErrorAction SilentlyContinue | ForEach-Object {
@@ -54,9 +67,11 @@ $inv.python_on_path = @(Get-Command python, python3 -All -ErrorAction SilentlyCo
     })
 
 # --- global packages and tools
-$inv.npm_global_root = (npm root -g 2>$null)
-$inv.npm_global = (npm ls -g --depth=0 --json 2>$null | ConvertFrom-Json -AsHashtable)
-$inv.npm_global_outdated = (npm outdated -g --json 2>$null | ConvertFrom-Json -AsHashtable)
+if (Get-Command npm -ErrorAction SilentlyContinue) {
+    $inv.npm_global_root = (npm root -g 2>$null)
+    $inv.npm_global = (npm ls -g --depth=0 --json 2>$null | ConvertFrom-Json -AsHashtable)
+    $inv.npm_global_outdated = (npm outdated -g --json 2>$null | ConvertFrom-Json -AsHashtable)
+}
 Save-Raw 'bun-global.txt' (bun pm ls -g 2>&1)
 $bunHome = if ($env:BUN_INSTALL) { $env:BUN_INSTALL } else { Join-Path $env:USERPROFILE '.bun' }
 $inv.bun_global_root = Join-Path $bunHome 'install\global\node_modules'
@@ -75,10 +90,16 @@ $inv.installed_apps = @(Get-ItemProperty $uninstall -ErrorAction SilentlyContinu
         Where-Object { $_.DisplayName -and $_.DisplayVersion -and $_.SystemComponent -ne 1 -and -not $_.ParentKeyName } |
         Sort-Object DisplayName, DisplayVersion -Unique |
         ForEach-Object { [ordered]@{ name = $_.DisplayName; version = $_.DisplayVersion; publisher = $_.Publisher } })
+# The same product registered with more than one version (VLC 3.0.21 next to 3.0.24, two .NET SDKs): the old copy stays
+# exploitable until it is removed. Names are compared without version numbers and architecture labels.
+$inv.duplicate_apps = @($inv.installed_apps | Group-Object {
+        ($_.name -replace '\d+(\.\d+)+', '' -replace '\((x64|x86|64-bit|32-bit|arm64)\)', '' -replace '[\s\-]+', ' ').Trim().ToLower()
+    } | Where-Object { @($_.Group.version | Sort-Object -Unique).Count -gt 1 } |
+    ForEach-Object { [ordered]@{ product = $_.Group[0].name; versions = @($_.Group | ForEach-Object { "$($_.name) $($_.version)" }) } })
 
 # --- browsers: read the file version, since Chrome and Edge are not winget-managed here.
 # Machine-wide paths first, then the per-user paths that an install without admin rights uses.
-$inv.browsers = foreach ($p in @(
+$inv.browsers = @(foreach ($p in @(
         "$env:ProgramFiles\Google\Chrome\Application\chrome.exe",
         "$env:LOCALAPPDATA\Google\Chrome\Application\chrome.exe",
         "${env:ProgramFiles(x86)}\Microsoft\Edge\Application\msedge.exe",
@@ -87,7 +108,7 @@ $inv.browsers = foreach ($p in @(
         "$env:ProgramFiles\BraveSoftware\Brave-Browser\Application\brave.exe",
         "$env:LOCALAPPDATA\BraveSoftware\Brave-Browser\Application\brave.exe")) {
     if (Test-Path $p) { @{ path = $p; version = (Get-Item $p).VersionInfo.ProductVersion } }
-}
+})
 
 # --- OS patch level
 $cv = Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion'
@@ -146,13 +167,18 @@ $inv.listening = @(Get-NetTCPConnection -State Listen -ErrorAction SilentlyConti
         [ordered]@{ port = $_.LocalPort; address = $_.LocalAddress; process = $p.ProcessName; path = $p.Path; risky = ($run.risky_ports -contains $_.LocalPort) }
     })
 
-# --- dependency manifests under the projects root
+# --- dependency manifests under every projects root
 $names = 'package.json', 'package-lock.json', 'pnpm-lock.yaml', 'yarn.lock', 'bun.lockb', 'bun.lock', 'pyproject.toml', 'uv.lock',
 'requirements*.txt', 'Pipfile.lock', 'poetry.lock', '*.csproj', '*.sln', '*.slnx', 'packages.config', 'go.mod', 'Cargo.lock',
 'Gemfile.lock', 'composer.lock', 'Dockerfile', 'Dockerfile.*', '*.Dockerfile'
 $excl = '\\(' + (($run.exclude_dirs | ForEach-Object { [regex]::Escape($_) }) -join '|') + ')\\'
-$inv.manifests = @(Get-ChildItem $run.projects_root -Recurse -File -Force -Include $names -ErrorAction SilentlyContinue |
-        Where-Object { $_.FullName -notmatch $excl } | Select-Object -ExpandProperty FullName | Sort-Object)
+# exclusions apply below each root only, so a root that itself sits under a folder named bin or build still counts.
+# A root missing today (an unplugged drive) is skipped here; setup_run.py has recorded it.
+$inv.manifests = @($(foreach ($root in @($run.projects_roots | Where-Object { Test-Path $_ -PathType Container })) {
+        $prefix = (Resolve-Path $root).ProviderPath.TrimEnd('\').Length
+        Get-ChildItem $root -Recurse -File -Force -Include $names -ErrorAction SilentlyContinue |
+            Where-Object { $_.FullName.Substring($prefix) -notmatch $excl } | Select-Object -ExpandProperty FullName
+    }) | Sort-Object)
 
 $inv | ConvertTo-Json -Depth 8 | Set-Content (Join-Path $RunDir 'inventory.json') -Encoding utf8
 "inventory: $(@($inv.runtimes | Where-Object version).Count) runtimes, $($inv.manifests.Count) manifests, $(@($inv.wsl).Count) WSL distros, $(@($inv.listening | Where-Object risky).Count) risky listening ports"

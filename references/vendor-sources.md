@@ -15,6 +15,7 @@ Prefer the vendor's page. When a news site or aggregator disagrees with it, go w
 | .NET | https://github.com/dotnet/core/tree/main/release-notes and https://dotnet.microsoft.com/en-us/platform/support/policy/dotnet-core | Patch Tuesday (second Tuesday of the month) runtime and SDK versions; end-of-support dates |
 | PowerShell | https://github.com/PowerShell/PowerShell/releases | Security releases; old side-by-side versions stay vulnerable |
 | PHP, Java, Ruby | php.net, Oracle CPU / Adoptium, ruby-lang.org | Only if the inventory found them, on PATH or off it |
+| Rust | https://blog.rust-lang.org/ (security announcements) and https://github.com/rust-lang/rustup/blob/master/CHANGELOG.md | Security point releases of rustc and Cargo, and rustup releases. Crate advisories (RustSec) come through OSV in the Cargo.lock scan |
 
 ## Applications
 
@@ -35,7 +36,11 @@ Prefer the vendor's page. When a news site or aggregator disagrees with it, go w
 | FortiClient | https://www.fortiguard.com/psirt (filter by FortiClient; usually IT-managed) |
 | ISC BIND | https://kb.isc.org/docs/aa-00913. There are no Windows builds after 9.17, so an installed Windows BIND cannot be patched |
 | WSL | https://github.com/microsoft/WSL/releases |
-| Adobe Acrobat | https://helpx.adobe.com/security/products/acrobat.html (it sometimes returns 403 to automated fetches; then use the APSB bulletin found by search, and say so) |
+| Adobe Acrobat | https://helpx.adobe.com/security/products/acrobat.html (it sometimes returns 403 to automated fetches; then use the APSB bulletin found by search, and say so. Adobe was reported to be moving bulletins to its Trust Center in October 2026; if the page says so, follow its link and record the new address under Limits so this list can be updated) |
+| Microsoft 365 Apps | https://learn.microsoft.com/en-us/officeupdates/microsoft365-apps-security-updates. Compare with the installed build, and say which update channel it is on if the build number shows it |
+| OneDrive, Teams and other Microsoft apps | MSRC (https://msrc.microsoft.com/update-guide), filtered by product |
+| Zed | https://zed.dev/releases/stable and https://github.com/zed-industries/zed/security/advisories |
+| Slack | https://slack.com/release-notes/windows |
 | Bun | https://bun.com/blog (release posts). The GitHub releases page can embed signed download URLs, so do not use it |
 | Windows | https://msrc.microsoft.com/update-guide and the current month's Patch Tuesday; compare with the OS build and UBR from the inventory |
 

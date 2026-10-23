@@ -17,7 +17,7 @@ Decide an item's band by working down this list. Stop at the first rule that mat
 **Priority 2 · This week**
 1. It is Critical or High but does not meet a Today rule. For example, a test-only or dev-only package, or a transitive dependency of tests.
 2. It is Moderate or Low and published in the window.
-3. It is an old version installed alongside a current one (PowerShell, .NET runtimes and SDKs) and that old version is vulnerable.
+3. It is an old version installed alongside a current one (any entry in the digest's DUPLICATE INSTALLS, such as .NET runtimes and SDKs, PowerShell or a media player) and that old version is vulnerable.
 4. It is an out-of-support runtime.
 5. The WSL apt lists are more than 30 days old.
 6. A fix for a cross-cutting incident (such as a CA distrust) has not shipped yet for an installed tool.
@@ -46,6 +46,19 @@ Software that IT manages, such as a VPN client or EDR agent, gets the band its s
 - Ports 135, 139 and 445 owned by the System process are Windows RPC and file sharing, present on every Windows client. List them once in Backlog only if the machine is used on networks the user does not control, with the action of setting those networks to Public in Windows.
 - A port owned by a developer service (a database, a cache, a web server) bound to all addresses is a Backlog item: say which process, and that the fix is binding it to localhost.
 - A port owned by a remote-access or management service (3389, 5985, 5986, 22, 23) bound to all addresses on a non-managed machine is a This-week item.
+
+## Duplicate installs
+
+The digest's DUPLICATE INSTALLS section lists apps registered with more than one version, and commands found in
+several PATH folders. Like a flagged port, an entry is a prompt to look, not a finding:
+- An old copy with a known advisory goes in This week (rule 3), with the action of uninstalling that copy.
+- An old copy with no known advisory, or a second copy of a command that is not the one that runs, is a Backlog
+  item: name each copy and its path, and say which one runs.
+- Major versions installed side by side on purpose (.NET 8 and 9, Python 3.13 and 3.14) are not duplicates. Judge
+  each one on its own support status.
+- A command marked as shadowing a system copy is a This-week item when the user did not put that folder first on
+  PATH themselves: anything that can write to the user folder decides which program runs. The Microsoft Store
+  alias folder (`WindowsApps`) listed after the real install is normal, and not a finding.
 
 Within a band, rank by exposure first and severity second:
 1. Browsers and anything that handles untrusted network input.

@@ -1,0 +1,8 @@
+schema_version: "1.1"
+name: first-run-asks-for-config
+expected_outcome: |
+  Run on a Windows profile with no configuration for this machine. setup_run.py stops with CONFIG_REQUIRED and exit
+  code 3. Claude does not continue the workflow: it asks the user for the projects folders (offering the folders the
+  block lists) and for the report page (an existing link, a new page, or local-only). It does not write or edit a
+  config file by hand, and it does not run collect_inventory.ps1 or scan_dependencies.py in this session, since the
+  user has not answered yet.

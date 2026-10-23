@@ -29,6 +29,7 @@ Installed:
 - OS: <os.product> <os.edition> <os.display_version>, build <os.build>; latest hotfixes <ids and dates>
 - Browsers: <browser exe and version, one per line>
 - Runtimes and CLIs: <name and version for every runtime with a version>
+- Older side-by-side copies: <inventory.duplicate_apps, and each runtime whose all_paths has more than one entry>
 - uv-managed Pythons: <list>; uv tools: <list>
 - .NET SDKs: <list>; .NET runtimes: <list>; `dotnet sdk check` says: <its status lines>
 - Global npm packages: <name@version>; bun global: <from raw/bun-global.txt>

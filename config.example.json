@@ -1,10 +1,13 @@
 {
-  "projects_root": "~/source/repos",
+  "hostname": "",
+  "projects_roots": ["~/source/repos"],
   "runs_root": "~/patch-triage/runs",
   "artifact_url": "",
+  "local_only": false,
   "window_hours": 24,
   "timezone_label": "",
-  "exclude_dirs": ["node_modules", ".venv", "venv", ".git", ".uvtmp", "bin", "obj", "dist", "build", "__pycache__"],
+  "untrusted_projects": [],
+  "exclude_dirs": ["node_modules", ".venv", "venv", ".git", ".uvtmp", "bin", "obj", "dist", "build", "__pycache__", "target"],
   "risky_ports": [21, 22, 23, 135, 139, 445, 3389, 5985, 5986, 3306, 5432, 6379, 27017, 9200, 11211],
   "runtime_search_roots": ["%SystemDrive%\\"]
 }

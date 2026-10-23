@@ -5,9 +5,8 @@
 
 .DESCRIPTION
     Creates a directory junction (no admin rights needed), so edits in the repo are live in Claude Code
-    and the repo stays the only copy. Also creates the user config at
-    %APPDATA%\sa-workstation-patch-triage\config.json from config.example.json if it does not exist yet.
-    Safe to re-run.
+    and the repo stays the only copy. It creates no config: the first run on each machine asks for the
+    projects folders and the report page, and saves them with setup_run.py --init. Safe to re-run.
 
 .EXAMPLE
     pwsh -ExecutionPolicy Bypass -File .\install.ps1
@@ -32,10 +31,5 @@ if (Test-Path $link) {
     Write-Host "Installed: $link -> $repo" -ForegroundColor Green
 }
 
-$cfg = Join-Path $env:APPDATA 'sa-workstation-patch-triage\config.json'
-if (-not (Test-Path $cfg)) {
-    New-Item -ItemType Directory -Force (Split-Path $cfg -Parent) | Out-Null
-    Copy-Item (Join-Path $repo 'config.example.json') $cfg
-    Write-Host "Created $cfg. Set artifact_url (and check the paths) before the first published run." -ForegroundColor Yellow
-}
 Write-Host "Restart Claude Code so it picks up the skill, then run /sa-workstation-patch-triage."
+Write-Host "The first run on this machine asks for the projects folders and the report page before it scans anything."
